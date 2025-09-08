@@ -32,8 +32,6 @@ The **square‑root rule** says that under a fixed labeling budget $K$, inclusio
 
 > **Unbiasedness note.** Design‑unbiased OLS via Horvitz–Thompson (HT) requires **randomization** with positive inclusion probability $\pi_j>0$ for *every* item that can contribute. A purely deterministic top‑$K$ list is a great prioritization heuristic, but strictly speaking it doesn’t by itself give HT‑unbiased shares for the full item universe. See “Design‑unbiased pipeline” below for a short, practical recipe.
 
----
-
 ## Installation
 
 ```bash
@@ -42,7 +40,6 @@ pip install -e .
 
 Dependencies: `numpy`, `pandas`. Tests use `pytest`.
 
----
 
 ## Minimal usage (deterministic recommendation list)
 
@@ -84,7 +81,6 @@ print(f"{len(item_ids)} items to label:", item_ids[:10])
 * You’re comfortable with a pragmatic approach (great for ops planning and when strict design‑unbiasedness is not required).
 * If you later want formal unbiasedness, add a small randomized “cover” over the remaining items (see next section).
 
----
 
 ## Design‑unbiased pipeline (HT shares)
 
@@ -165,8 +161,6 @@ print("beta_hat shape:", beta_hat.shape)
 * Poisson sampling gives you unbiased HT shares and a **random** label count near $K$.
 * For **fixed size** and smaller realized $X^\top u$, use a **balanced** fixed‑size sampler (cube method / conditional Poisson). Feed it the same $g_j=X^\top v_j$ as auxiliaries and $\pi_j$ as first‑order targets.
 
----
-
 ## API
 
 ```python
@@ -196,8 +190,6 @@ items_to_label(
 * ⚠️ **Does not** implement a full random sampling engine (cube method / conditional Poisson) — those are small, separate libraries.
 * ⚠️ A purely deterministic top‑$K$ list is **not** HT‑unbiased for the full population. Add a small randomization layer (as shown) if strict design‑unbiasedness is required.
 
----
-
 ## Practical tips
 
 * **Intercept:** Include an explicit intercept column in `X` if you want overall level effects.
@@ -205,13 +197,10 @@ items_to_label(
 * **Very sparse rows:** If many rows have small $T_i$, expect more volatile shares; consider per‑row variance caps (a future extension).
 * **Label errors:** If labels are noisy (misclassification), HT is unbiased for the noisy trait. For de‑noised coefficients you’ll need a measurement‑error correction.
 
----
 
 ## License
 
 MIT
-
----
 
 ## Next steps
 
