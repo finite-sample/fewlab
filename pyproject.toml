@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fewlab"
+version = "0.1.0"
+description = "Pick the fewest items to label for unbiased OLS on shares"
+authors = [{name = "Gaurav Sood"}]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.23", "pandas>=1.5"]
+
+[project.urls]
+Homepage = "https://github.com/finite-sample/fewlab"
+
+[tool.setuptools.packages.find]
+where = ["fewlab"]
