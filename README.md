@@ -201,9 +201,3 @@ items_to_label(
 ## License
 
 MIT
-
-## Next steps
-
-* Add an optional `return="probabilities"` mode that returns $\pi_j\propto \sqrt{w_j}$ (with budget scaling), alongside the top‑$K$ list.
-* Provide a small adapter to common balanced samplers so you can get a **fixed‑size, balanced** label set with the same first‑order inclusions.
-* Expose an optional **row‑SE** design mode (min‑labels under per‑row variance caps) to support fairness/audit use cases.
