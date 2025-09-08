@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
-Pick the **few** items to **lab**el so you can run an OLS regression on per‑row trait shares with high precision and clean design logic.
+Pick the **few**est items to **lab**el so you can run an OLS regression on per‑row trait shares with the highest precision.
 
 ## Why this exists
 
