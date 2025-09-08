@@ -1,8 +1,4 @@
-# fewlab
-
-Pick the **few**est items to **lab**el for unbiased OLS on shares — fast, deterministic, and simple.
-
-## What it does
+## fewlab: fewest items to label for unbiased OLS on shares
 
 Given:
 - a counts matrix `C` (units × items), and
