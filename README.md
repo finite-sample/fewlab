@@ -1,4 +1,4 @@
-## fewlab: fewest items to label for unbiased OLS on shares
+## fewlab: fewest items to label for most efficient unbiased OLS on shares
 
 [![PyPI version](https://img.shields.io/pypi/v/fewlab.svg)](https://pypi.org/project/fewlab/)
 [![Downloads](https://pepy.tech/badge/fewlab)](https://pepy.tech/project/fewlab)
