@@ -1,4 +1,3 @@
-import pandas as pd
 from fewlab import items_to_label
 from .data_synth import make_synth
 

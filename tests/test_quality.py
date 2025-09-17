@@ -1,12 +1,13 @@
 import numpy as np
-import pandas as pd
 from fewlab import items_to_label
 from .data_synth import make_synth
 
 def compute_w(counts, X, ridge=None):
     T = counts.sum(axis=1).to_numpy(float)
     keep = T > 0
-    counts = counts.loc[keep]; X = X.loc[keep]; T = T[keep]
+    counts = counts.loc[keep]
+    X = X.loc[keep]
+    T = T[keep]
     V = counts.to_numpy(float) / T[:, None]
     Xn = X.to_numpy(float)
     XtX = Xn.T @ Xn

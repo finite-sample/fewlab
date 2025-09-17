@@ -25,7 +25,6 @@ def balanced_fixed_size(pi: pd.Series, g: np.ndarray, K: int,
         raise ValueError("K must be in [1, m]")
 
     rng = np.random.default_rng(seed)
-    p = g.shape[0]
     cols = pi.index
 
     # 1) Initial K-draw proportional to pi

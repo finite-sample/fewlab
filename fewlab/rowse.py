@@ -38,7 +38,6 @@ def row_se_min_labels(counts: pd.DataFrame, eps2: np.ndarray | pd.Series,
 
     b = eps2 + q.sum(axis=1)               # (n,)
     mu = np.full(n, 1e-4)                  # dual start
-    inv_pi_floor = 1.0 / (pi_min + 1e-18)
 
     def primal_from_mu(mu_vec: np.ndarray) -> np.ndarray:
         s = q.T @ mu_vec                   # (m,)
