@@ -1,6 +1,7 @@
 from fewlab import items_to_label
 from .data_synth import make_synth
 
+
 def test_basic_api():
     counts, X = make_synth(n=50, m=80, p=5, seed=0)
     K = 15
@@ -9,6 +10,7 @@ def test_basic_api():
     assert len(chosen) == K
     # ensure they are item column names
     assert set(chosen).issubset(set(counts.columns))
+
 
 def test_zero_rows_are_dropped():
     counts, X = make_synth(n=30, m=40, p=4, seed=1)

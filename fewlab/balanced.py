@@ -2,9 +2,16 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-def balanced_fixed_size(pi: pd.Series, g: np.ndarray, K: int,
-                        *, seed: int | None = None,
-                        max_swaps: int = 5_000, tol: float = 1e-6) -> pd.Index:
+
+def balanced_fixed_size(
+    pi: pd.Series,
+    g: np.ndarray,
+    K: int,
+    *,
+    seed: int | None = None,
+    max_swaps: int = 5_000,
+    tol: float = 1e-6,
+) -> pd.Index:
     """
     Heuristic fixed-size sampler that:
       1) starts with a K-sized draw from pi (normalized),
@@ -36,7 +43,7 @@ def balanced_fixed_size(pi: pd.Series, g: np.ndarray, K: int,
 
     inv_pi = 1.0 / (pi.to_numpy(float) + 1e-18)
     # current residual R = sum((I/pi)-1) g
-    coeff = (selected * inv_pi - 1.0)
+    coeff = selected * inv_pi - 1.0
     R = g @ coeff  # (p,)
 
     # 2) Greedy local search: try swaps that reduce ||R||_2
@@ -44,7 +51,8 @@ def balanced_fixed_size(pi: pd.Series, g: np.ndarray, K: int,
     in_idx = np.flatnonzero(selected)
     out_idx = np.flatnonzero(~selected)
 
-    def norm2(x): return float(np.dot(x, x))
+    def norm2(x):
+        return float(np.dot(x, x))
 
     improved = True
     nswaps = 0
@@ -56,8 +64,8 @@ def balanced_fixed_size(pi: pd.Series, g: np.ndarray, K: int,
         rng.shuffle(in_idx)
         rng.shuffle(out_idx)
         tried = 0
-        for j_in in in_idx[:min(len(in_idx), 256)]:
-            for j_out in out_idx[:min(len(out_idx), 256)]:
+        for j_in in in_idx[: min(len(in_idx), 256)]:
+            for j_out in out_idx[: min(len(out_idx), 256)]:
                 tried += 1
                 # delta R = g(:,j_out)*(1/pi_out) - g(:,j_in)*(1/pi_in)
                 dR = g[:, j_out] * inv_pi[j_out] - g[:, j_in] * inv_pi[j_in]

@@ -2,10 +2,16 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-def row_se_min_labels(counts: pd.DataFrame, eps2: np.ndarray | pd.Series,
-                      *, pi_min: float = 1e-4,
-                      max_iter: int = 8000, tol: float = 1e-6,
-                      seed: int | None = None) -> pd.Series:
+
+def row_se_min_labels(
+    counts: pd.DataFrame,
+    eps2: np.ndarray | pd.Series,
+    *,
+    pi_min: float = 1e-4,
+    max_iter: int = 8000,
+    tol: float = 1e-6,
+    seed: int | None = None,
+) -> pd.Series:
     """
     Fewest-labels design subject to per-row SE caps:
        sum_j q_ij / pi_j <= eps2_i + sum_j q_ij  for all rows i,
@@ -26,7 +32,7 @@ def row_se_min_labels(counts: pd.DataFrame, eps2: np.ndarray | pd.Series,
         if len(T) == 0:
             raise ValueError("All rows have zero totals")
 
-    q = (counts.to_numpy(float) / T[:, None]) ** 2    # (n x m)
+    q = (counts.to_numpy(float) / T[:, None]) ** 2  # (n x m)
     n, m = q.shape
     cols = list(counts.columns)
 
@@ -36,11 +42,11 @@ def row_se_min_labels(counts: pd.DataFrame, eps2: np.ndarray | pd.Series,
     if eps2.size != n:
         raise ValueError("eps2 must be a scalar or length n")
 
-    b = eps2 + q.sum(axis=1)               # (n,)
-    mu = np.full(n, 1e-4)                  # dual start
+    b = eps2 + q.sum(axis=1)  # (n,)
+    mu = np.full(n, 1e-4)  # dual start
 
     def primal_from_mu(mu_vec: np.ndarray) -> np.ndarray:
-        s = q.T @ mu_vec                   # (m,)
+        s = q.T @ mu_vec  # (m,)
         pi = np.sqrt(s + 1e-18)
         return np.clip(pi, pi_min, 1.0)
 

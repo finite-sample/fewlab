@@ -2,6 +2,7 @@ import numpy as np
 from fewlab import items_to_label
 from .data_synth import make_synth
 
+
 def compute_w(counts, X, ridge=None):
     T = counts.sum(axis=1).to_numpy(float)
     keep = T > 0
@@ -21,6 +22,7 @@ def compute_w(counts, X, ridge=None):
     G = Xn.T @ V
     w = np.einsum("jp,pk,kj->j", G.T, XtX_inv, G)
     return w, counts.columns
+
 
 def test_selected_items_have_higher_w():
     counts, X = make_synth(n=120, m=200, p=6, seed=1234)

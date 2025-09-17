@@ -3,15 +3,20 @@ import numpy as np
 import pandas as pd
 from dataclasses import dataclass
 
+
 @dataclass
 class Influence:
-    w: np.ndarray          # (m,)   A-opt weights w_j
-    g: np.ndarray          # (p, m) regression projections g_j = X^T v_j
-    cols: list             # item column names in the same order
+    w: np.ndarray  # (m,)   A-opt weights w_j
+    g: np.ndarray  # (p, m) regression projections g_j = X^T v_j
+    cols: list  # item column names in the same order
 
-def _influence(counts: pd.DataFrame, X: pd.DataFrame,
-               ensure_full_rank: bool = True,
-               ridge: float | None = None) -> Influence:
+
+def _influence(
+    counts: pd.DataFrame,
+    X: pd.DataFrame,
+    ensure_full_rank: bool = True,
+    ridge: float | None = None,
+) -> Influence:
     """Compute (w_j, g_j) given counts and X."""
     if not counts.index.equals(X.index):
         raise ValueError("counts.index must align with X.index")
@@ -25,7 +30,7 @@ def _influence(counts: pd.DataFrame, X: pd.DataFrame,
         if len(T) == 0:
             raise ValueError("All rows have zero totals; nothing to compute.")
 
-    V = counts.to_numpy(float) / T[:, None]          # (n x m)
+    V = counts.to_numpy(float) / T[:, None]  # (n x m)
     Xn = X.to_numpy(float)
     XtX = Xn.T @ Xn
     if ridge is None and ensure_full_rank:
@@ -37,14 +42,20 @@ def _influence(counts: pd.DataFrame, X: pd.DataFrame,
         XtX = XtX + ridge * np.eye(XtX.shape[0])
     XtX_inv = np.linalg.inv(XtX)
 
-    G = Xn.T @ V                                     # (p x m)
-    w = np.einsum("jp,pk,kj->j", G.T, XtX_inv, G)    # (m,)
+    G = Xn.T @ V  # (p x m)
+    w = np.einsum("jp,pk,kj->j", G.T, XtX_inv, G)  # (m,)
     return Influence(w=w, g=G, cols=list(counts.columns))
 
-def pi_aopt_for_budget(counts: pd.DataFrame, X: pd.DataFrame, K: int,
-                       *, pi_min: float = 1e-4,
-                       ensure_full_rank: bool = True,
-                       ridge: float | None = None) -> pd.Series:
+
+def pi_aopt_for_budget(
+    counts: pd.DataFrame,
+    X: pd.DataFrame,
+    K: int,
+    *,
+    pi_min: float = 1e-4,
+    ensure_full_rank: bool = True,
+    ridge: float | None = None,
+) -> pd.Series:
     """
     Return A-opt first-order inclusion probabilities pi_j for expected budget K:
         pi_j = clip(c * sqrt(w_j), [pi_min, 1]), with c chosen so sum pi = K.
@@ -71,6 +82,7 @@ def pi_aopt_for_budget(counts: pd.DataFrame, X: pd.DataFrame, K: int,
             lo = c
     _, pi = sum_pi(hi)
     return pd.Series(pi, index=inf.cols, name="pi")
+
 
 def items_to_label(
     counts: pd.DataFrame,
@@ -168,7 +180,7 @@ def items_to_label(
     order = np.argsort(-inf.w)
     chosen = order[:K]
     return list(pd.Index(inf.cols)[chosen])
-    
+
     order = np.argsort(-w)
     chosen = order[:K]
     item_ids = list(counts.columns[chosen])
