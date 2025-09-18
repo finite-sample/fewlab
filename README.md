@@ -1,6 +1,7 @@
 ## fewlab: fewest items to label for most efficient unbiased OLS on shares
 
 [![Python application](https://github.com/finite-sample/fewlab/actions/workflows/ci.yml/badge.svg)](https://github.com/finite-sample/fewlab/actions/workflows/ci.yml)
+[![Documentation](https://img.shields.io/badge/docs-github.io-blue)](https://finite-sample.github.io/fewlab/)
 [![PyPI version](https://img.shields.io/pypi/v/fewlab.svg)](https://pypi.org/project/fewlab/)
 [![Downloads](https://pepy.tech/badge/fewlab)](https://pepy.tech/project/fewlab)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
