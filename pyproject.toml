@@ -35,3 +35,6 @@ docs = [
 # This replaces any previous [tool.setuptools.packages.find] tables.
 [tool.setuptools]
 packages = { find = { where = ["."], include = ["fewlab*"] } }
+
+[tool.ruff]
+exclude = ["*.ipynb"]

@@ -23,9 +23,11 @@ repos:
       - id: trailing-whitespace
         name: Trim trailing whitespace
         description: Remove trailing whitespace from files
+        exclude: '\.ipynb$'
       - id: end-of-file-fixer
         name: Fix end of files
         description: Ensure files end with a newline
+        exclude: '\.ipynb$'
       - id: check-yaml
         name: Check YAML syntax
         description: Validate YAML file syntax
@@ -47,9 +49,11 @@ repos:
       - id: check-ast
         name: Check Python AST
         description: Check whether the files parse as valid python
+        exclude: '\.ipynb$'
       - id: debug-statements
         name: Debug imports and breakpoints
         description: Check for debugger imports and py37+ `breakpoint()` calls
+        exclude: '\.ipynb$'
 
   # Run tests (mirrors CI/CD pytest step)
   - repo: local
