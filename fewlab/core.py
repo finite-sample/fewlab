@@ -13,11 +13,13 @@ from .constants import (
 )
 
 
-@dataclass
+@dataclass(slots=True)
 class Influence:
+    """Influence data structure with memory-optimized slots."""
+
     w: np.ndarray  # (m,)   A-opt weights w_j
     g: np.ndarray  # (p, m) regression projections g_j = X^T v_j
-    cols: list  # item column names in the same order
+    cols: list[str]  # item column names in the same order
 
 
 def _influence(
@@ -104,7 +106,7 @@ def items_to_label(
     item_axis: int = 1,
     ensure_full_rank: bool = True,
     ridge: float | None = None,
-) -> list:
+) -> list[str]:
     """
     Return a deterministic list of item identifiers to label (length K),
     using the A-opt square-root rule on w_j = g_j^T (X^T X)^{-1} g_j.

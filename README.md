@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/fewlab.svg)](https://pypi.org/project/fewlab/)
 [![Downloads](https://pepy.tech/badge/fewlab)](https://pepy.tech/project/fewlab)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
 **Problem**: You have usage data (users × items) and want to understand how user traits relate to item preferences. But you can't afford to label every item. This tool tells you which items to label first to get the most accurate analysis.
 
@@ -111,7 +111,7 @@ The basic approach gives you optimal items to label but technically requires som
 pip install fewlab
 ```
 
-**Requirements**: Python 3.9+, numpy ≥1.23, pandas ≥1.5
+**Requirements**: Python 3.11+, numpy ≥1.23, pandas ≥1.5
 
 **Development**:
 ```bash
@@ -119,8 +119,10 @@ pip install -e ".[dev]"  # Includes testing, linting, pre-commit hooks
 pip install -e ".[docs]" # Includes documentation building
 ```
 
-## What's New in v0.2.0
+## What's New in v0.3.0
 
+- 🐍 **Modern Python**: Requires Python 3.11+ (breaking change)
+- 📋 **Smart Config**: Docs automatically sync with pyproject.toml metadata
 - 🚀 **Performance**: O(n) top-k selection algorithm (vs O(n log n))
 - 🔧 **Code Quality**: Type hints, constants, eliminated dead code
 - 📚 **Modern Docs**: Furo theme with dark/light mode support

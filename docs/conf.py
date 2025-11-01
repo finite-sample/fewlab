@@ -1,16 +1,23 @@
 """Configuration file for the Sphinx documentation builder."""
 
-import os
 import sys
+import tomllib
+from pathlib import Path
 
 # Add the parent directory to the path so we can import fewlab
-sys.path.insert(0, os.path.abspath(".."))
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
 
-# Project information
-project = "fewlab"
-copyright = "2024, Gaurav Sood"
-author = "Gaurav Sood"
-release = "0.2.0"
+# Read project metadata from pyproject.toml
+pyproject_path = project_root / "pyproject.toml"
+with pyproject_path.open("rb") as f:
+    pyproject_data = tomllib.load(f)
+
+project_info = pyproject_data["project"]
+project = project_info["name"]
+release = project_info["version"]
+author = project_info["authors"][0]["name"]
+copyright = f"2024, {author}"
 
 # Extensions
 extensions = [
@@ -104,7 +111,8 @@ html_theme_options = {
 html_show_sourcelink = True
 
 # Custom CSS (if needed)
-html_static_path = ["_static"] if os.path.exists("_static") else []
+static_dir = Path(__file__).parent / "_static"
+html_static_path = ["_static"] if static_dir.exists() else []
 
 # Math support
 mathjax3_config = {

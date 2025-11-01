@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fewlab"
-version = "0.2.0"
+version = "0.3.0"
 description = "Pick the fewest items to label for unbiased OLS on shares"
 authors = [{name = "Gaurav Sood"}]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = ["numpy>=1.23", "pandas>=1.5"]
 
 [project.urls]
