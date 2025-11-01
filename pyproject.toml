@@ -4,29 +4,34 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fewlab"
-version = "0.3.0"
+version = "0.3.1"
 description = "Pick the fewest items to label for unbiased OLS on shares"
-authors = [{name = "Gaurav Sood"}]
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["numpy>=1.23", "pandas>=1.5"]
+authors = [{ name = "Gaurav Sood" }]
+dependencies = [
+  "numpy>=1.23",
+  "pandas>=1.5",
+]
 
 [project.urls]
 Homepage = "https://github.com/finite-sample/fewlab"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "ruff>=0.1.0",
-    "pre-commit>=3.0.0",
-    "build>=1.0.0"
+  "pytest>=7.0",
+  "ruff>=0.1.0",
+  "pre-commit>=3.0.0",
+  "build>=1.0.0",
 ]
 docs = [
-    "sphinx>=7.0",
-    "furo>=2024.7.18",
-    "sphinx-autodoc-typehints>=1.25",
-    "sphinx-design>=0.6.0"
+  "sphinx>=7.0",
+  "furo>=2024.7.18",
+  "sphinx-autodoc-typehints>=1.25",
+  "sphinx-design>=0.6.0",
 ]
 
-[tool.setuptools.packages.find]
-where = ["fewlab"]
+# Flat layout: repo root contains fewlab/
+# This replaces any previous [tool.setuptools.packages.find] tables.
+[tool.setuptools]
+packages = { find = { where = ["."], include = ["fewlab*"] } }
