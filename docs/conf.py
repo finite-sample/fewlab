@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.abspath(".."))
 project = "fewlab"
 copyright = "2024, Gaurav Sood"
 author = "Gaurav Sood"
-release = "0.1.0"
+release = "0.2.0"
 
 # Extensions
 extensions = [
@@ -20,6 +20,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx.ext.autosummary",
     "sphinx.ext.mathjax",
+    "sphinx_design",
 ]
 
 # Napoleon settings for NumPy-style docstrings
@@ -65,32 +66,45 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 # HTML output
-html_theme = "sphinx_rtd_theme"
-html_static_path = ["_static"]
+html_theme = "furo"
 html_title = f"{project} v{release}"
 html_short_title = project
 html_favicon = None
 
-# Theme options
+# Furo theme options with modern dark/light mode support
 html_theme_options = {
-    "display_version": True,
-    "prev_next_buttons_location": "bottom",
-    "style_external_links": False,
-    "vcs_pageview_mode": "",
-    "style_nav_header_background": "#2980B9",
-    # Toc options
-    "collapse_navigation": True,
-    "sticky_navigation": True,
-    "navigation_depth": 4,
-    "includehidden": True,
-    "titles_only": False,
+    "sidebar_hide_name": False,
+    "navigation_with_keys": True,
+    "top_of_page_button": "edit",
+    "source_repository": "https://github.com/finite-sample/fewlab/",
+    "source_branch": "main",
+    "source_directory": "docs/",
+    # Modern color scheme
+    "light_css_variables": {
+        "color-brand-primary": "#2563eb",  # Modern blue
+        "color-brand-content": "#1d4ed8",
+        "color-admonition-background": "#f8fafc",
+        "color-sidebar-background": "#ffffff",
+        "color-sidebar-background-border": "#e2e8f0",
+        "font-stack": "system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen,Ubuntu,Cantarell,sans-serif",
+        "font-stack--monospace": "SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace",
+    },
+    "dark_css_variables": {
+        "color-brand-primary": "#60a5fa",  # Lighter blue for dark mode
+        "color-brand-content": "#93c5fd",
+        "color-admonition-background": "#1e293b",
+        "color-sidebar-background": "#0f172a",
+        "color-sidebar-background-border": "#1e293b",
+        "color-background-primary": "#0f172a",
+        "color-background-secondary": "#1e293b",
+    },
 }
-
-# Add any paths that contain custom static files (such as style sheets)
-html_static_path = []
 
 # Add source code link
 html_show_sourcelink = True
+
+# Custom CSS (if needed)
+html_static_path = ["_static"] if os.path.exists("_static") else []
 
 # Math support
 mathjax3_config = {

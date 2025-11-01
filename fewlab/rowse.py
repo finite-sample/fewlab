@@ -1,15 +1,23 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
+from .constants import (
+    PI_MIN_DEFAULT,
+    MAX_ITER_ROWSE,
+    TOLERANCE_DEFAULT,
+    DUAL_START_VALUE,
+    DIVISION_EPS,
+    NOISE_SCALE,
+)
 
 
 def row_se_min_labels(
     counts: pd.DataFrame,
     eps2: np.ndarray | pd.Series,
     *,
-    pi_min: float = 1e-4,
-    max_iter: int = 8000,
-    tol: float = 1e-6,
+    pi_min: float = PI_MIN_DEFAULT,
+    max_iter: int = MAX_ITER_ROWSE,
+    tol: float = TOLERANCE_DEFAULT,
     seed: int | None = None,
 ) -> pd.Series:
     """
@@ -24,17 +32,19 @@ def row_se_min_labels(
     if not isinstance(counts, pd.DataFrame):
         raise TypeError("counts must be a DataFrame")
 
-    T = counts.sum(axis=1).to_numpy(float)
-    keep = T > 0
+    T: np.ndarray = counts.sum(axis=1).to_numpy(float)
+    keep: np.ndarray = T > 0
     if not np.all(keep):
         counts = counts.loc[keep]
         T = T[keep]
         if len(T) == 0:
             raise ValueError("All rows have zero totals")
 
-    q = (counts.to_numpy(float) / T[:, None]) ** 2  # (n x m)
+    q: np.ndarray = (counts.to_numpy(float) / T[:, None]) ** 2  # (n x m)
+    n: int
+    m: int
     n, m = q.shape
-    cols = list(counts.columns)
+    cols: list[str] = list(counts.columns)
 
     eps2 = np.asarray(eps2, dtype=float)
     if eps2.ndim == 0:
@@ -42,18 +52,18 @@ def row_se_min_labels(
     if eps2.size != n:
         raise ValueError("eps2 must be a scalar or length n")
 
-    b = eps2 + q.sum(axis=1)  # (n,)
-    mu = np.full(n, 1e-4)  # dual start
+    b: np.ndarray = eps2 + q.sum(axis=1)  # (n,)
+    mu: np.ndarray = np.full(n, DUAL_START_VALUE)  # dual start
 
     def primal_from_mu(mu_vec: np.ndarray) -> np.ndarray:
-        s = q.T @ mu_vec  # (m,)
-        pi = np.sqrt(s + 1e-18)
+        s: np.ndarray = q.T @ mu_vec  # (m,)
+        pi: np.ndarray = np.sqrt(s + DIVISION_EPS)
         return np.clip(pi, pi_min, 1.0)
 
-    pi = primal_from_mu(mu)
+    pi: np.ndarray = primal_from_mu(mu)
 
     def lhs(pi_vec: np.ndarray) -> np.ndarray:
-        return (q / (pi_vec[None, :] + 1e-18)).sum(axis=1)
+        return (q / (pi_vec[None, :] + DIVISION_EPS)).sum(axis=1)
 
     L = lhs(pi)
     viol = L - b
@@ -68,7 +78,7 @@ def row_se_min_labels(
         gnorm = float(np.linalg.norm(g))
         eta = 0.5 / (1.0 + gnorm)
         # small random jitter helps avoid cycling
-        mu = np.maximum(0.0, mu + eta * g + rng.normal(scale=1e-6, size=n))
+        mu = np.maximum(0.0, mu + eta * g + rng.normal(scale=NOISE_SCALE, size=n))
         pi = primal_from_mu(mu)
         L = lhs(pi)
         viol = L - b

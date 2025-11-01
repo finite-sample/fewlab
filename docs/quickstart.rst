@@ -30,27 +30,27 @@ Simple Example
    # users × items usage matrix
    np.random.seed(42)
    n_users, n_items = 100, 50
-   
+
    # User features (e.g., demographics)
    user_features = pd.DataFrame({
        'age': np.random.normal(35, 10, n_users),
        'income': np.random.normal(50000, 15000, n_users),
        'urban': np.random.binomial(1, 0.6, n_users)
    })
-   
+
    # Item usage counts (sparse matrix)
    item_usage = pd.DataFrame(
        np.random.poisson(2, (n_users, n_items)),
        columns=[f'item_{i}' for i in range(n_items)]
    )
-   
+
    # Get top 15 items to label
    priority_items = items_to_label(
        counts=item_usage,
        X=user_features,
        K=15
    )
-   
+
    print(f"Priority items to label: {priority_items}")
 
 What You Get
@@ -76,7 +76,7 @@ Start with 10-20% of your total items:
 
    total_items = item_usage.shape[1]
    K = max(10, total_items // 5)  # At least 10, or 20% of items
-   
+
    priority_items = items_to_label(counts=item_usage, X=user_features, K=K)
 
 You can always label more items later if your analysis needs higher precision.

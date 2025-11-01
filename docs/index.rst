@@ -41,7 +41,7 @@ When You Need This
 You have:
 
 - A usage matrix: rows are users, columns are items (websites, products, apps)
-- User features you want to analyze (demographics, behavior patterns)  
+- User features you want to analyze (demographics, behavior patterns)
 - Limited budget to label items (safe/unsafe, brand affiliation, category)
 
 You want to run a regression to understand relationships between user features and item traits, but labeling is expensive. Random sampling wastes budget on items that don't affect your analysis.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fewlab"
-version = "0.1.0"
+version = "0.2.0"
 description = "Pick the fewest items to label for unbiased OLS on shares"
 authors = [{name = "Gaurav Sood"}]
 readme = "README.md"
@@ -15,8 +15,18 @@ dependencies = ["numpy>=1.23", "pandas>=1.5"]
 Homepage = "https://github.com/finite-sample/fewlab"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "ruff>=0.1.0"]
-docs = ["sphinx>=7.0", "sphinx-rtd-theme>=2.0", "sphinx-autodoc-typehints>=1.25"]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.0.0",
+    "build>=1.0.0"
+]
+docs = [
+    "sphinx>=7.0",
+    "furo>=2024.7.18",
+    "sphinx-autodoc-typehints>=1.25",
+    "sphinx-design>=0.6.0"
+]
 
 [tool.setuptools.packages.find]
 where = ["fewlab"]

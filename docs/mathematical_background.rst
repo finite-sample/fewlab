@@ -67,8 +67,8 @@ Main Algorithm (:func:`fewlab.items_to_label`)
 
 2. **Calculate regression projections**: :math:`G = X^T V` where :math:`G \in \mathbb{R}^{p \times m}`
 
-3. **Compute A-optimal weights**: 
-   
+3. **Compute A-optimal weights**:
+
    .. math::
       w_j = g_j^T (X^T X)^{-1} g_j
 
@@ -166,7 +166,7 @@ Robustness
 The algorithm is robust to:
 
 - **Missing data**: Handled through zero usage entries
-- **Outliers**: Proportional scaling reduces sensitivity to extreme usage patterns  
+- **Outliers**: Proportional scaling reduces sensitivity to extreme usage patterns
 - **Collinearity**: Ridge regularization prevents numerical instability
 
 Limitations

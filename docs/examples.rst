@@ -21,7 +21,7 @@ Suppose you run an e-commerce platform and want to understand how user demograph
        'urban': [1, 1, 0, 1, 0, 1, 1, 0],  # 1=urban, 0=suburban/rural
        'has_children': [0, 1, 1, 0, 1, 0, 1, 1]
    })
-   
+
    # Product purchase counts (users × products)
    products = pd.DataFrame({
        'laptop': [2, 1, 0, 1, 1, 2, 0, 1],
@@ -33,14 +33,14 @@ Suppose you run an e-commerce platform and want to understand how user demograph
        'smartwatch': [1, 1, 0, 1, 0, 2, 1, 0],
        'speakers': [0, 1, 1, 1, 2, 0, 1, 1]
    })
-   
+
    # Get top 4 products to label first
    priority_products = items_to_label(
        counts=products,
        X=users,
        K=4
    )
-   
+
    print(f"Label these products first: {priority_products}")
    # Output might be: ['headphones', 'smartphone', 'laptop', 'smartwatch']
 
@@ -58,7 +58,7 @@ You're moderating user-generated content and need to prioritize which content to
        'verified': [0, 1, 0, 0, 0, 1, 0, 0],
        'posting_frequency': [2.1, 0.8, 5.2, 1.5, 3.1, 0.5, 4.0, 1.2]  # posts per day
    })
-   
+
    # Content interaction counts (views, likes, shares)
    content_interactions = pd.DataFrame({
        'post_1': [10, 150, 5, 30, 25, 200, 15, 40],
@@ -68,14 +68,14 @@ You're moderating user-generated content and need to prioritize which content to
        'post_5': [0, 5, 15, 2, 3, 10, 8, 5],
        'post_6': [30, 180, 0, 25, 20, 220, 12, 35]
    })
-   
+
    # Prioritize 3 posts for manual review
    priority_content = items_to_label(
        counts=content_interactions,
        X=users,
        K=3
    )
-   
+
    print(f"Review these posts first: {priority_content}")
 
 Website Feature Usage Analysis
@@ -92,7 +92,7 @@ You want to understand which website features to label by importance, given user
        'mobile_user': [1, 0, 1, 1, 0, 1, 0, 0],
        'returning_user': [0, 1, 0, 1, 1, 0, 1, 1]
    })
-   
+
    # Feature usage counts
    feature_usage = pd.DataFrame({
        'search_bar': [5, 12, 2, 8, 15, 3, 6, 9],
@@ -104,14 +104,14 @@ You want to understand which website features to label by importance, given user
        'chat_support': [0, 1, 1, 0, 2, 1, 0, 1],
        'newsletter_signup': [0, 1, 0, 1, 1, 0, 1, 1]
    })
-   
+
    # Focus on top 4 features
    priority_features = items_to_label(
        counts=feature_usage,
        X=users,
        K=4
    )
-   
+
    print(f"Analyze these features first: {priority_features}")
 
 Comparing Different Approaches
@@ -123,18 +123,18 @@ You can compare the algorithmic selection with random sampling:
 
    import numpy as np
    from fewlab import items_to_label
-   
+
    # Your data
    users = pd.DataFrame({'age': range(20, 120), 'income': range(30000, 130000, 1000)})
-   items = pd.DataFrame(np.random.poisson(3, (100, 20)), 
+   items = pd.DataFrame(np.random.poisson(3, (100, 20)),
                        columns=[f'item_{i}' for i in range(20)])
-   
+
    # Algorithmic selection
    smart_selection = items_to_label(items, users, K=5)
-   
+
    # Random selection for comparison
    random_selection = np.random.choice(items.columns, size=5, replace=False).tolist()
-   
+
    print(f"Smart selection: {smart_selection}")
    print(f"Random selection: {random_selection}")
 
@@ -148,7 +148,7 @@ Start small and expand based on results:
    # Start with a small set
    initial_items = items_to_label(products, users, K=3)
    print(f"Round 1 - Label these {len(initial_items)} items: {initial_items}")
-   
+
    # After labeling, you might want more
    if analysis_needs_more_precision():
        additional_items = items_to_label(products, users, K=6)
@@ -170,7 +170,7 @@ For large datasets, you might want to sample users first:
    else:
        users_sample = users
        items_sample = items
-   
+
    priority_items = items_to_label(items_sample, users_sample, K=20)
 
 Error Handling
@@ -192,21 +192,21 @@ Robust error handling for real-world data:
                counts = counts.loc[common_idx]
                features = features.loc[common_idx]
                print(f"Aligned datasets to {len(common_idx)} common users")
-           
+
            # Check for empty data
            if counts.sum().sum() == 0:
                raise ValueError("No usage data found")
-           
+
            return items_to_label(counts, features, K=K, ridge=ridge)
-           
+
        except np.linalg.LinAlgError:
            print("Matrix singularity detected, adding ridge regularization")
            return items_to_label(counts, features, K=K, ridge=1e-6)
        except Exception as e:
            print(f"Error in item selection: {e}")
            # Fallback to random selection
-           return np.random.choice(counts.columns, size=min(K, len(counts.columns)), 
+           return np.random.choice(counts.columns, size=min(K, len(counts.columns)),
                                  replace=False).tolist()
-   
+
    # Use the robust version
    selected_items = safe_item_selection(products, users, K=5)

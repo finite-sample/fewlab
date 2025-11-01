@@ -27,7 +27,7 @@ The tool identifies items that most influence your regression coefficients. It p
 
 Think of it as "statistical leverage"—some items matter more for understanding user-trait relationships.
 
-## Basic Usage
+## Quick Start
 
 ```python
 from fewlab import items_to_label
@@ -48,12 +48,47 @@ priority_items = items_to_label(
 print(f"Label these items first: {priority_items}")
 ```
 
+## Advanced Usage
+
+```python
+from fewlab import pi_aopt_for_budget, balanced_fixed_size, row_se_min_labels
+
+# Get inclusion probabilities for expected budget
+probabilities = pi_aopt_for_budget(
+    counts=item_usage,
+    X=user_features,
+    K=100
+)
+
+# Balanced sampling with probability constraints
+selected_items = balanced_fixed_size(
+    pi=probabilities,
+    g=influence_projections,
+    K=100,
+    seed=42
+)
+
+# Minimize row-wise standard errors
+optimal_items = row_se_min_labels(
+    counts=item_usage,
+    eps2=error_budget_per_row
+)
+```
+
 ## What You Get
 
-A ranked list of K items that will give you the most precise regression estimates. The tool considers:
-- How much each item is used
-- Which user segments use which items  
-- The statistical relationship between items and your analysis goals
+**Multiple approaches** for optimal item selection:
+
+- **`items_to_label()`**: Deterministic top-K items for maximum precision
+- **`pi_aopt_for_budget()`**: Inclusion probabilities for randomized sampling
+- **`balanced_fixed_size()`**: Balanced sampling with probability constraints
+- **`row_se_min_labels()`**: Minimize row-wise standard errors
+- **`topk()`**: Efficient O(n) top-k selection algorithm
+
+All methods consider:
+- Item usage patterns across user segments
+- Statistical leverage for regression coefficients
+- Optimal allocation of labeling budget
 
 ## Practical Considerations
 
@@ -61,7 +96,7 @@ A ranked list of K items that will give you the most precise regression estimate
 
 **Validation**: Compare regression stability with different K values. When coefficients stop changing significantly, you have enough labels.
 
-**Limitations**: 
+**Limitations**:
 - Works best when usage patterns correlate with user features
 - Assumes item labels are binary (has trait / doesn't have trait)
 - Most effective for sparse usage matrices
@@ -76,7 +111,25 @@ The basic approach gives you optimal items to label but technically requires som
 pip install fewlab
 ```
 
-Requires: numpy, pandas
+**Requirements**: Python 3.9+, numpy ≥1.23, pandas ≥1.5
+
+**Development**:
+```bash
+pip install -e ".[dev]"  # Includes testing, linting, pre-commit hooks
+pip install -e ".[docs]" # Includes documentation building
+```
+
+## What's New in v0.2.0
+
+- 🚀 **Performance**: O(n) top-k selection algorithm (vs O(n log n))
+- 🔧 **Code Quality**: Type hints, constants, eliminated dead code
+- 📚 **Modern Docs**: Furo theme with dark/light mode support
+- 🧪 **Developer Experience**: Pre-commit hooks, comprehensive testing
+- 📦 **Expanded API**: 5 functions for different sampling strategies
+
+## Development
+
+For contributors, see [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions including required pre-commit hooks.
 
 ## License
 
