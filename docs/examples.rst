@@ -3,6 +3,26 @@ Examples
 
 This page contains practical examples of using fewlab in different scenarios.
 
+Complete Interactive Demo
+-------------------------
+
+For a comprehensive demonstration with real-world performance analysis, see our **interactive Jupyter notebook**:
+
+📓 `FewLab Demo: Optimal Item Selection for Survey Estimation <https://github.com/finite-sample/fewlab/blob/main/examples/fewlab_demo_colab.ipynb>`_
+
+This notebook demonstrates:
+
+- **E-commerce simulation** with 1,000 users and 100 products
+- **Performance comparison** between random and optimal item selection
+- **Statistical analysis** showing ~33% reduction in standard errors
+- **Visualization** of bias, RMSE, and confidence interval improvements
+- **Complete workflow** from data generation to final estimand
+
+|Colab| **Run in Google Colab** for an interactive experience
+
+.. |Colab| image:: https://colab.research.google.com/assets/colab-badge.svg
+   :target: https://colab.research.google.com/github/finite-sample/fewlab/blob/main/examples/fewlab_demo_colab.ipynb
+
 E-commerce Product Labeling
 ----------------------------
 

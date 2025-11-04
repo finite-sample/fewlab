@@ -79,6 +79,8 @@ Quick Example
    # Send priority_items to your labeling team
    print(f"Label these items first: {priority_items}")
 
+For a complete demonstration with performance analysis, see our `interactive Jupyter notebook <https://github.com/finite-sample/fewlab/blob/main/examples/fewlab_demo_colab.ipynb>`_ showing ~33% reduction in standard errors compared to random selection.
+
 Installation
 ------------
 
