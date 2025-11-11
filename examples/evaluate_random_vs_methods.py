@@ -22,13 +22,18 @@ import numpy as np
 import pandas as pd
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, Tuple
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Import FewLab methods
 import sys
-sys.path.insert(0, '/home/user/fewlab')
+
+BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BASE_DIR.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 import fewlab
 from fewlab.utils import compute_g_matrix, compute_horvitz_thompson_weights
 
@@ -390,8 +395,9 @@ def plot_results(summary: pd.DataFrame, cfg: SimConfig):
     axes[2].grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/home/user/fewlab/examples/efficiency_comparison.png', dpi=300, bbox_inches='tight')
-    print("\nSaved plot to examples/efficiency_comparison.png")
+    output_path = BASE_DIR / 'efficiency_comparison.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"\nSaved plot to {output_path.relative_to(REPO_ROOT)}")
 
     # 2. Average metrics across all coefficients
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
@@ -421,8 +427,9 @@ def plot_results(summary: pd.DataFrame, cfg: SimConfig):
     axes[1].grid(True, alpha=0.3, axis='y')
 
     plt.tight_layout()
-    plt.savefig('/home/user/fewlab/examples/average_metrics.png', dpi=300, bbox_inches='tight')
-    print("Saved plot to examples/average_metrics.png")
+    output_path = BASE_DIR / 'average_metrics.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"Saved plot to {output_path.relative_to(REPO_ROOT)}")
 
 
 def print_summary_table(summary: pd.DataFrame):
@@ -504,9 +511,9 @@ def main():
     plot_results(summary, cfg)
 
     # Save detailed results
-    output_path = '/home/user/fewlab/examples/simulation_results.csv'
+    output_path = BASE_DIR / 'simulation_results.csv'
     summary.to_csv(output_path, index=False)
-    print(f"\nDetailed results saved to {output_path}")
+    print(f"\nDetailed results saved to {output_path.relative_to(REPO_ROOT)}")
 
     print("\n" + "="*80)
     print("Evaluation complete!")

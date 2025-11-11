@@ -11,11 +11,16 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, List
 import matplotlib.pyplot as plt
 import seaborn as sns
 import sys
-sys.path.insert(0, '/home/user/fewlab')
+
+BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BASE_DIR.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 import fewlab
 from fewlab.utils import compute_g_matrix, compute_horvitz_thompson_weights
 
@@ -240,8 +245,9 @@ def plot_budget_sensitivity(summary: pd.DataFrame, cfg: BudgetConfig):
     axes[2].grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('/home/user/fewlab/examples/budget_sensitivity.png', dpi=300, bbox_inches='tight')
-    print("\nSaved plot to examples/budget_sensitivity.png")
+    output_path = BASE_DIR / 'budget_sensitivity.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"\nSaved plot to {output_path.relative_to(REPO_ROOT)}")
 
 
 def print_summary_table(summary: pd.DataFrame, cfg: BudgetConfig):
@@ -331,9 +337,9 @@ def main():
     plot_budget_sensitivity(summary, cfg)
 
     # Save results
-    output_path = '/home/user/fewlab/examples/budget_sensitivity_results.csv'
+    output_path = BASE_DIR / 'budget_sensitivity_results.csv'
     summary.to_csv(output_path, index=False)
-    print(f"\nDetailed results saved to {output_path}")
+    print(f"\nDetailed results saved to {output_path.relative_to(REPO_ROOT)}")
 
     print("\n" + "="*100)
     print("Budget sensitivity analysis complete!")
