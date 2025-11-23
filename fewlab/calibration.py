@@ -63,10 +63,13 @@ def calibrate_weights(
         Item identifiers that were actually selected.
     pop_totals : np.ndarray, shape (p,), optional
         Known population totals. If None, uses g.sum(axis=1).
+
     distance : {'chi2', 'euclidean'}
         Distance measure for calibration. Currently only 'chi2' is implemented.
+
     ridge : float
         Ridge regularization parameter for numerical stability.
+
     nonneg : bool
         If True, enforce non-negative weights (may slightly violate calibration).
 
@@ -85,6 +88,8 @@ def calibrate_weights(
     ----------
     Deville, J.-C., & Särndal, C.-E. (1992). Calibration estimators in survey sampling.
     Journal of the American Statistical Association, 87(418), 376-382.
+
+
     """
     if distance != "chi2":
         raise NotImplementedError(f"Distance '{distance}' not implemented yet")
@@ -155,6 +160,7 @@ def calibrated_ht_estimator(
     -------
     pd.Series
         Estimated row shares (or totals if normalize_by_total=False).
+
     """
     # Align weights and labels with counts columns
     w = weights.reindex(counts.columns).fillna(0.0).to_numpy()

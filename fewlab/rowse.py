@@ -30,6 +30,7 @@ def row_se_min_labels(
     Returns
     -------
     Series of pi_j (index = item ids).
+
     """
     if not isinstance(counts, pd.DataFrame):
         raise TypeError("counts must be a DataFrame")
