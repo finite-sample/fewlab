@@ -31,11 +31,6 @@ jobs:
         pre-commit --version
         pre-commit run --all-files --show-diff-on-failure
 
-    - name: Lint with ruff
-      run: |
-        ruff check .
-        ruff format --check .
-
     - name: Test with pytest
       run: |
         pytest tests/ -v
