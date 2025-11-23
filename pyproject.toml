@@ -24,8 +24,6 @@ docs = [
   "sphinx-autodoc-typehints>=1.25",
   "sphinx-design>=0.6.0",
 ]
-
-[dependency-groups]
 dev = [
   "pytest>=7.0",
   "pytest-cov>=4.0",
@@ -37,6 +35,8 @@ test = [
   "pytest>=7.0",
   "pytest-cov>=4.0",
 ]
+
+[dependency-groups]
 
 [tool.hatch.build.targets.wheel]
 packages = ["fewlab"]
