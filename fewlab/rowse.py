@@ -1,13 +1,15 @@
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from .constants import (
-    PI_MIN_DEFAULT,
-    MAX_ITER_ROWSE,
-    TOLERANCE_DEFAULT,
-    DUAL_START_VALUE,
     DIVISION_EPS,
+    DUAL_START_VALUE,
+    MAX_ITER_ROWSE,
     NOISE_SCALE,
+    PI_MIN_DEFAULT,
+    TOLERANCE_DEFAULT,
 )
 
 
@@ -70,7 +72,7 @@ def row_se_min_labels(
     best_pi, best_max_viol = pi.copy(), float(np.max(viol))
 
     rng = np.random.default_rng(seed)
-    for t in range(1, max_iter + 1):
+    for _t in range(1, max_iter + 1):
         if best_max_viol <= tol:
             break
         # subgradient step on mu: mu <- [mu + eta*(L - b)]_+

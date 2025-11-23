@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from numpy.testing import assert_allclose
+
 from fewlab.constants import TOLERANCE_LOOSE
 
 
@@ -79,7 +80,7 @@ class TestCalibration:
 
     def test_calibrated_ht_estimator(self):
         """Test calibrated HT estimator."""
-        from fewlab.calibration import calibrated_ht_estimator, calibrate_weights
+        from fewlab.calibration import calibrate_weights, calibrated_ht_estimator
 
         # Get calibrated weights
         weights = calibrate_weights(pi=self.pi, g=self.g, selected=self.selected)
@@ -285,9 +286,9 @@ class TestIntegration:
 
     def test_calibrated_core_tail(self):
         """Test using calibration with core+tail selection."""
-        from fewlab.hybrid import core_plus_tail
         from fewlab.calibration import calibrate_weights, calibrated_ht_estimator
         from fewlab.core import _influence
+        from fewlab.hybrid import core_plus_tail
 
         K = 40
 

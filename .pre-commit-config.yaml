@@ -2,90 +2,28 @@
 # This mirrors the CI/CD pipeline to catch issues locally before pushing
 
 repos:
-  # Ruff linting and formatting (matches CI/CD)
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.4
     hooks:
-      # Linting
       - id: ruff
-        name: Ruff linter
-        description: Run Ruff linter on Python files
-        args: [--fix, --exit-non-zero-on-fix]
-      # Formatting
+        args: [--fix]
       - id: ruff-format
-        name: Ruff formatter
-        description: Run Ruff formatter on Python files
 
-  # Basic file checks
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.12.1
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports]
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        name: Trim trailing whitespace
-        description: Remove trailing whitespace from files
-        exclude: '\.ipynb$'
       - id: end-of-file-fixer
-        name: Fix end of files
-        description: Ensure files end with a newline
-        exclude: '\.ipynb$'
       - id: check-yaml
-        name: Check YAML syntax
-        description: Validate YAML file syntax
       - id: check-toml
-        name: Check TOML syntax
-        description: Validate TOML file syntax
       - id: check-merge-conflict
-        name: Check for merge conflicts
-        description: Check for files that contain merge conflict strings
-      - id: check-added-large-files
-        name: Check for large files
-        description: Prevent giant files from being committed
-        args: ['--maxkb=1000']
-
-  # Python-specific checks
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
-    hooks:
-      - id: check-ast
-        name: Check Python AST
-        description: Check whether the files parse as valid python
-        exclude: '\.ipynb$'
+      - id: check-case-conflict
+      - id: check-docstring-first
       - id: debug-statements
-        name: Debug imports and breakpoints
-        description: Check for debugger imports and py37+ `breakpoint()` calls
-        exclude: '\.ipynb$'
-
-  # Run tests (mirrors CI/CD pytest step)
-  - repo: local
-    hooks:
-      - id: pytest
-        name: Run tests
-        description: Run the test suite to ensure all tests pass
-        entry: python3 -m pytest
-        language: system
-        args: [tests/, -v]
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
-
-  # Build package check (mirrors CI/CD build step)
-  - repo: local
-    hooks:
-      - id: package-build
-        name: Build package
-        description: Test that the package builds correctly
-        entry: python3 -m build
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-push]
-
-# Configuration
-default_install_hook_types: [pre-commit, pre-push]
-default_stages: [pre-commit]
-
-# Fail fast - stop on first failure
-fail_fast: true
-
-# Minimum pre-commit version
-minimum_pre_commit_version: '3.0.0'
+      - id: check-added-large-files

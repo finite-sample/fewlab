@@ -6,9 +6,12 @@ across the library.
 """
 
 from __future__ import annotations
+
+from collections.abc import Sequence
+
 import numpy as np
 import pandas as pd
-from typing import Sequence
+
 from .constants import DIVISION_EPS
 
 
@@ -142,5 +145,5 @@ def get_item_positions(
     try:
         positions = np.array([col_to_pos[item] for item in items], dtype=int)
     except KeyError as e:
-        raise ValueError(f"Item {e} not found in reference index")
+        raise ValueError(f"Item {e} not found in reference index") from e
     return positions

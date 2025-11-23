@@ -1,6 +1,8 @@
 import numpy as np
 import pandas as pd
-from fewlab import pi_aopt_for_budget, balanced_fixed_size, row_se_min_labels
+
+from fewlab import balanced_fixed_size, pi_aopt_for_budget, row_se_min_labels
+
 from .data_synth import make_synth
 
 

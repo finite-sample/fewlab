@@ -6,16 +6,19 @@ deterministic high-influence selection with balanced probabilistic sampling.
 """
 
 from __future__ import annotations
+
+from typing import Any
+
 import numpy as np
 import pandas as pd
-from typing import Tuple, Dict, Any
-from .core import items_to_label, pi_aopt_for_budget, _influence
+
 from .balanced import balanced_fixed_size
 from .constants import DIVISION_EPS
+from .core import _influence, items_to_label, pi_aopt_for_budget
 from .utils import (
-    validate_fraction,
     compute_horvitz_thompson_weights,
     get_item_positions,
+    validate_fraction,
 )
 
 
@@ -28,7 +31,7 @@ def core_plus_tail(
     seed: int | None = None,
     ensure_full_rank: bool = True,
     ridge: float | None = None,
-) -> Tuple[pd.Index, pd.Series, Dict[str, Any]]:
+) -> tuple[pd.Index, pd.Series, dict[str, Any]]:
     """
     Hybrid sampler combining deterministic core with balanced probabilistic tail.
 
@@ -163,7 +166,7 @@ def adaptive_core_tail(
     max_tail_frac: float = 0.4,
     condition_threshold: float = 1e6,
     seed: int | None = None,
-) -> Tuple[pd.Index, pd.Series, Dict[str, Any]]:
+) -> tuple[pd.Index, pd.Series, dict[str, Any]]:
     """
     Adaptive core+tail selection with data-driven tail fraction.
 

@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.21.1"]
+build-backend = "hatchling.build"
 
 [project]
 name = "fewlab"
@@ -18,12 +18,6 @@ dependencies = [
 Homepage = "https://github.com/finite-sample/fewlab"
 
 [project.optional-dependencies]
-dev = [
-  "pytest>=7.0",
-  "ruff>=0.1.0",
-  "pre-commit>=3.0.0",
-  "build>=1.0.0",
-]
 docs = [
   "sphinx>=7.0",
   "furo>=2024.7.18",
@@ -31,10 +25,65 @@ docs = [
   "sphinx-design>=0.6.0",
 ]
 
-# Flat layout: repo root contains fewlab/
-# This replaces any previous [tool.setuptools.packages.find] tables.
-[tool.setuptools]
-packages = { find = { where = ["."], include = ["fewlab*"] } }
+[dependency-groups]
+dev = [
+  "pytest>=7.0",
+  "pytest-cov>=4.0",
+  "ruff>=0.7.0",
+  "pre-commit>=3.0.0",
+  "mypy>=1.0",
+]
+test = [
+  "pytest>=7.0",
+  "pytest-cov>=4.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["fewlab"]
 
 [tool.ruff]
-exclude = ["*.ipynb"]
+line-length = 88
+target-version = "py311"
+exclude = [
+  ".git",
+  "__pycache__",
+  "build",
+  "dist",
+  ".venv",
+  "docs",
+  "*.ipynb",
+]
+
+[tool.ruff.lint]
+select = [
+  "E",  # pycodestyle errors
+  "W",  # pycodestyle warnings
+  "F",  # pyflakes
+  "I",  # isort
+  "B",  # flake8-bugbear
+  "C4", # flake8-comprehensions
+  "UP", # pyupgrade
+]
+ignore = [
+  "E501",  # line too long (handled by formatter)
+  "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["S101"]
+"examples/*" = ["E402", "F841"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["fewlab"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = "--cov=fewlab --cov-report=html --cov-report=term-missing"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true

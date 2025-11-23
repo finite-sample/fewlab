@@ -11,12 +11,13 @@ Main API functions:
 - adaptive_core_tail: Data-driven hybrid selection
 """
 
-from .core import items_to_label, pi_aopt_for_budget
 from .balanced import balanced_fixed_size
+from .calibration import calibrate_weights, calibrated_ht_estimator
+from .core import items_to_label, pi_aopt_for_budget
+from .greedy import greedy_aopt_selection
+from .hybrid import adaptive_core_tail, core_plus_tail
 from .rowse import row_se_min_labels
 from .selection import topk
-from .calibration import calibrate_weights, calibrated_ht_estimator
-from .hybrid import core_plus_tail, adaptive_core_tail
 
 __version__ = "0.3.1"
 
@@ -31,4 +32,5 @@ __all__ = [
     "calibrated_ht_estimator",
     "core_plus_tail",
     "adaptive_core_tail",
+    "greedy_aopt_selection",
 ]

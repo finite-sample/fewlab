@@ -1,16 +1,19 @@
 from __future__ import annotations
+
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
-from .selection import topk
+
 from .constants import (
-    SMALL_RIDGE,
-    CONDITION_THRESHOLD,
-    PI_MIN_DEFAULT,
-    BINARY_SEARCH_LO,
     BINARY_SEARCH_HI,
+    BINARY_SEARCH_LO,
+    CONDITION_THRESHOLD,
     MAX_ITER_BINARY_SEARCH,
+    PI_MIN_DEFAULT,
+    SMALL_RIDGE,
 )
+from .selection import topk
 
 
 @dataclass(slots=True)
@@ -32,7 +35,9 @@ def _influence(
     if not counts.index.equals(X.index):
         raise ValueError("counts.index must align with X.index")
 
+    # Handle sparse counts efficiently
     T: np.ndarray = counts.sum(axis=1).to_numpy(float)
+
     keep: np.ndarray = T > 0
     if not np.all(keep):
         counts = counts.loc[keep]
@@ -41,8 +46,40 @@ def _influence(
         if len(T) == 0:
             raise ValueError("All rows have zero totals; nothing to compute.")
 
-    V: np.ndarray = counts.to_numpy(float) / T[:, None]  # (n x m)
+    # V = counts / T[:, None]
+    # If counts is sparse, we want to avoid densifying (n x m) if possible.
+    # However, the current implementation computes G = X.T @ V
+    # G = X.T @ (counts / T) = (X.T / T) @ counts ? No.
+    # G_jp = sum_i X_ip * (C_ij / T_i)
+    #      = sum_i (X_ip / T_i) * C_ij
+    # Let X_scaled = X / T[:, None]. Then G = X_scaled.T @ counts.
+
+    # This is much more efficient if counts is sparse!
+
     Xn: np.ndarray = X.to_numpy(float)
+    X_scaled = Xn / T[:, None]
+
+    if hasattr(counts, "sparse"):
+        # Pandas sparse to scipy sparse? Or just use dot if supported
+        # counts.to_numpy() might be dense.
+        # Let's try to use sparse matrix multiplication if possible.
+        try:
+            if isinstance(counts, pd.DataFrame):
+                # Check if it has sparse values
+                is_sparse = counts.dtypes.apply(pd.api.types.is_sparse).all()
+                if is_sparse:
+                    # Convert to scipy sparse
+                    C_sparse = counts.sparse.to_coo()
+                    G = X_scaled.T @ C_sparse
+                else:
+                    G = X_scaled.T @ counts.to_numpy(float)
+            else:
+                G = X_scaled.T @ counts.to_numpy(float)
+        except ImportError:
+            G = X_scaled.T @ counts.to_numpy(float)
+    else:
+        G = X_scaled.T @ counts.to_numpy(float)
+
     XtX: np.ndarray = Xn.T @ Xn
     if ridge is None and ensure_full_rank:
         cond: float = np.linalg.cond(XtX)
@@ -50,10 +87,18 @@ def _influence(
             ridge = SMALL_RIDGE
     if ridge is not None and ridge > 0:
         XtX = XtX + ridge * np.eye(XtX.shape[0])
-    XtX_inv: np.ndarray = np.linalg.inv(XtX)
 
-    G: np.ndarray = Xn.T @ V  # (p x m)
-    w: np.ndarray = np.einsum("jp,pk,kj->j", G.T, XtX_inv, G)  # (m,)
+    # Use solve instead of inv for stability: w_j = g_j^T (X^T X)^{-1} g_j
+    # We want diag(G^T (XtX)^{-1} G).
+    # Let H = (XtX)^{-1} G. We can find H by solving (XtX) H = G.
+    # Then w_j is dot product of j-th column of G and H.
+    try:
+        H = np.linalg.solve(XtX, G)
+    except np.linalg.LinAlgError:
+        # Fallback for singular matrix if ridge didn't help enough
+        H = np.linalg.lstsq(XtX, G, rcond=None)[0]
+
+    w: np.ndarray = np.einsum("jp,jp->j", G.T, H.T)  # (m,)
     return Influence(w=w, g=G, cols=list(counts.columns))
 
 

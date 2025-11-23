@@ -1,12 +1,14 @@
 from __future__ import annotations
+
 import numpy as np
 import pandas as pd
+
 from .constants import (
-    MAX_SWAPS_BALANCED,
-    TOLERANCE_DEFAULT,
     DIVISION_EPS,
-    TOLERANCE_STRICT,
+    MAX_SWAPS_BALANCED,
     SEARCH_LIMIT_BALANCED,
+    TOLERANCE_DEFAULT,
+    TOLERANCE_STRICT,
 )
 
 
