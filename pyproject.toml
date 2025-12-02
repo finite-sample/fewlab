@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling>=1.21.1"]
-build-backend = "hatchling.build"
+requires = ["uv_build"]
+build-backend = "uv_build"
 
 [project]
 name = "fewlab"
@@ -38,8 +38,9 @@ test = [
 
 [dependency-groups]
 
-[tool.hatch.build.targets.wheel]
-packages = ["fewlab"]
+# uv build backend configuration
+[tool.uv.build-backend]
+module-root = "."
 
 [tool.ruff]
 line-length = 88

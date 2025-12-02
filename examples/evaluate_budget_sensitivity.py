@@ -153,7 +153,7 @@ def run_budget_experiment(cfg: BudgetConfig) -> pd.DataFrame:
     print(f"Running {cfg.n_sims} simulations per budget...\n")
 
     for K in cfg.budgets:
-        print(f"Budget K={K} ({100*K/cfg.n_items:.1f}% of items)")
+        print(f"Budget K={K} ({100 * K / cfg.n_items:.1f}% of items)")
 
         for sim_idx in range(cfg.n_sims):
             # Generate fresh data for each simulation

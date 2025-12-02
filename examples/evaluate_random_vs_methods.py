@@ -510,7 +510,7 @@ def print_summary_table(summary: pd.DataFrame):
             if rel_eff > 1:
                 print(f"  --> {rel_eff:.2f}x MORE EFFICIENT than random sampling")
             else:
-                print(f"  --> {1/rel_eff:.2f}x LESS EFFICIENT than random sampling")
+                print(f"  --> {1 / rel_eff:.2f}x LESS EFFICIENT than random sampling")
 
 
 def main():
