@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   publish:
@@ -22,6 +22,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Sync CITATION.cff
+      uses: gojiplus/citation-sync@v1
+      with:
+        commit: true
 
     - name: Set up Python
       uses: actions/setup-python@v5
