@@ -89,6 +89,18 @@ warn_unused_configs = true
 check_untyped_defs = true
 
 [tool.deptry]
-extend_exclude = ["examples", "docs"]
+extend_exclude = ["examples", "docs", "tests/data_synth.py"]
 ignore_notebooks = true
-pep621_dev_dependency_groups = ["dev", "test", "docs"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = [
+    "sphinx",
+    "furo",
+    "sphinx-autodoc-typehints",
+    "sphinx-design",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "pre-commit",
+    "mypy"
+]
