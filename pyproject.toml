@@ -7,7 +7,7 @@ name = "fewlab"
 version = "0.3.1"
 description = "Pick the fewest items to label for unbiased OLS on shares"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 authors = [{ name = "Gaurav Sood" }]
 dependencies = [
   "numpy>=1.23",
@@ -43,7 +43,7 @@ module-root = "."
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py312"
 exclude = [
   ".git",
   "__pycache__",
@@ -83,7 +83,7 @@ python_files = "test_*.py"
 addopts = "--cov=fewlab --cov-report=html --cov-report=term-missing"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 check_untyped_defs = true
