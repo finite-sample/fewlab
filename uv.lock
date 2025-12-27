@@ -272,6 +272,7 @@ test = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pre-commit" },
     { name = "pydoclint" },
     { name = "pyright" },
 ]
@@ -300,6 +301,7 @@ provides-extras = ["docs", "dev", "test"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "pre-commit", specifier = ">=3.0.0" },
     { name = "pydoclint", specifier = ">=0.8.3" },
     { name = "pyright", specifier = ">=1.1.407" },
 ]
