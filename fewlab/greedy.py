@@ -43,7 +43,7 @@ def greedy_aopt_selection(
     if K <= 0:
         return []
 
-    n, m = counts.shape
+    _, m = counts.shape
     if K > m:
         raise ValueError(f"K={K} exceeds number of items m={m}")
 

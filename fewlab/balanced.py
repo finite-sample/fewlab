@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 import numpy as np
 import pandas as pd
 
@@ -96,4 +98,4 @@ def balanced_fixed_size(
         if best_norm < tol:
             break
 
-    return cols[selected]
+    return cast(pd.Index, cols[selected])

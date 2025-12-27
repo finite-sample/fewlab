@@ -51,7 +51,7 @@ def compute_g_matrix(counts: pd.DataFrame, X: pd.DataFrame) -> np.ndarray:
 
     V = counts.to_numpy(float) / (T[:, None] + DIVISION_EPS)  # (n, m)
     Xn = X.to_numpy(float)
-    G = Xn.T @ V  # (p, m)
+    G: np.ndarray = Xn.T @ V  # (p, m)
 
     return G
 
@@ -72,6 +72,8 @@ def validate_fraction(value: float, name: str = "fraction") -> None:
     ValueError
         If value is not in the interval (0, 1).
     """
+    if not isinstance(value, int | float):
+        raise TypeError(f"{name} must be numeric, got {type(value).__name__}")
     if not 0 < value < 1:
         raise ValueError(f"{name} must be in (0, 1), got {value}")
 
@@ -94,7 +96,12 @@ def compute_horvitz_thompson_weights(
     pd.Series
         HT weights indexed by selected items.
     """
-    return (1.0 / (pi + DIVISION_EPS)).reindex(selected)
+    ht_weights = 1.0 / (pi + DIVISION_EPS)
+    assert isinstance(ht_weights, pd.Series), "Expected pd.Series from division"
+    if isinstance(selected, pd.Index):
+        return ht_weights.reindex(selected)
+    else:
+        return ht_weights.reindex(list(selected))
 
 
 def align_indices(*dataframes: pd.DataFrame | pd.Series) -> bool:

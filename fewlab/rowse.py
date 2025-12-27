@@ -44,9 +44,7 @@ def row_se_min_labels(
             raise ValueError("All rows have zero totals")
 
     q: np.ndarray = (counts.to_numpy(float) / T[:, None]) ** 2  # (n x m)
-    n: int
-    m: int
-    n, m = q.shape
+    n, _ = q.shape
     cols: list[str] = list(counts.columns)
 
     eps2 = np.asarray(eps2, dtype=float)
@@ -66,7 +64,8 @@ def row_se_min_labels(
     pi: np.ndarray = primal_from_mu(mu)
 
     def lhs(pi_vec: np.ndarray) -> np.ndarray:
-        return (q / (pi_vec[None, :] + DIVISION_EPS)).sum(axis=1)
+        result: np.ndarray = (q / (pi_vec[None, :] + DIVISION_EPS)).sum(axis=1)
+        return result
 
     L = lhs(pi)
     viol = L - b

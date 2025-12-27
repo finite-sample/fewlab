@@ -15,11 +15,14 @@ import pandas as pd
 from .constants import DIVISION_EPS, SMALL_RIDGE
 from .utils import get_item_positions
 
+# Type alias for item selection types (Python 3.12+)
+type ItemSelection = Sequence[str] | pd.Index
+
 
 def calibrate_weights(
     pi: pd.Series,
     g: np.ndarray,
-    selected: Sequence[str] | pd.Index,
+    selected: ItemSelection,
     pop_totals: np.ndarray | None = None,
     *,
     distance: str = "chi2",
@@ -98,7 +101,8 @@ def calibrate_weights(
     sel_pos = get_item_positions(selected, pi.index)
 
     # Base HT weights for selected items
-    d_full = 1.0 / (pi.to_numpy() + DIVISION_EPS)
+    pi_array = pi.to_numpy(dtype=float)
+    d_full = 1.0 / (pi_array + DIVISION_EPS)
     d = d_full[sel_pos]  # (K,)
 
     # G matrix for selected items
@@ -128,7 +132,12 @@ def calibrate_weights(
     if nonneg:
         w = np.maximum(w, DIVISION_EPS)
 
-    return pd.Series(w, index=pd.Index(selected), name="calibrated_weights")
+    if isinstance(selected, pd.Index):
+        index = selected
+    else:
+        index = pd.Index(list(selected))
+    result_series: pd.Series = pd.Series(w, index=index, name="calibrated_weights")
+    return result_series
 
 
 def calibrated_ht_estimator(
@@ -163,11 +172,11 @@ def calibrated_ht_estimator(
 
     """
     # Align weights and labels with counts columns
-    w = weights.reindex(counts.columns).fillna(0.0).to_numpy()
-    a = labels.reindex(counts.columns).fillna(0.0).to_numpy()
+    w = weights.reindex(counts.columns).fillna(0.0).to_numpy(dtype=float)
+    a = labels.reindex(counts.columns).fillna(0.0).to_numpy(dtype=float)
 
     # Weighted sum
-    numerator = counts.to_numpy() @ (w * a)  # (n,)
+    numerator = counts.to_numpy(dtype=float) @ (w * a)  # (n,)
 
     if normalize_by_total:
         T = counts.sum(axis=1).to_numpy(float)
@@ -175,4 +184,6 @@ def calibrated_ht_estimator(
     else:
         result = numerator
 
-    return pd.Series(result, index=counts.index, name="calibrated_ht_estimate")
+    return pd.Series(
+        result, index=counts.index, name="calibrated_ht_estimate", dtype=float
+    )

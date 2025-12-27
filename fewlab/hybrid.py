@@ -21,6 +21,9 @@ from .utils import (
     validate_fraction,
 )
 
+# Type aliases for commonly used types (Python 3.12+)
+type SelectionResult = tuple[pd.Index, pd.Series, dict[str, Any]]
+
 
 def core_plus_tail(
     counts: pd.DataFrame,
@@ -31,7 +34,7 @@ def core_plus_tail(
     seed: int | None = None,
     ensure_full_rank: bool = True,
     ridge: float | None = None,
-) -> tuple[pd.Index, pd.Series, dict[str, Any]]:
+) -> SelectionResult:
     """
     Hybrid sampler combining deterministic core with balanced probabilistic tail.
 
@@ -95,7 +98,7 @@ def core_plus_tail(
     """
     validate_fraction(tail_frac, "tail_frac")
 
-    n, m = counts.shape
+    _, m = counts.shape
     K = min(K, m)
     K_core = int((1 - tail_frac) * K)
     K_tail = K - K_core
@@ -166,7 +169,7 @@ def adaptive_core_tail(
     max_tail_frac: float = 0.4,
     condition_threshold: float = 1e6,
     seed: int | None = None,
-) -> tuple[pd.Index, pd.Series, dict[str, Any]]:
+) -> SelectionResult:
     """
     Adaptive core+tail selection with data-driven tail fraction.
 

@@ -7,7 +7,7 @@ name = "fewlab"
 version = "0.3.1"
 description = "Pick the fewest items to label for unbiased OLS on shares"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 authors = [{ name = "Gaurav Sood" }]
 dependencies = [
   "numpy>=1.23",
@@ -29,6 +29,7 @@ dev = [
   "ruff>=0.7.0",
   "pre-commit>=3.0.0",
   "mypy>=1.0",
+  "pydoclint>=0.6.0",
 ]
 test = [
   "pytest>=7.0",
@@ -36,14 +37,23 @@ test = [
 ]
 
 [dependency-groups]
+dev = [
+    "pydoclint>=0.8.3",
+    "pyright>=1.1.407",
+]
+test = [
+    "pytest>=9.0.1",
+    "pytest-cov>=7.0.0",
+]
 
 # uv build backend configuration
 [tool.uv.build-backend]
 module-root = "."
+include-package-data = true
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py313"
 exclude = [
   ".git",
   "__pycache__",
@@ -82,11 +92,24 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 addopts = "--cov=fewlab --cov-report=html --cov-report=term-missing"
 
-[tool.mypy]
-python_version = "3.12"
-warn_return_any = true
-warn_unused_configs = true
-check_untyped_defs = true
+[tool.pyright]
+pythonVersion = "3.14"
+typeCheckingMode = "basic"
+reportUnusedImport = true
+reportUnusedVariable = true
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+
+[tool.pydoclint]
+style = 'google'
+arg-type-hints-in-signature = true
+arg-type-hints-in-docstring = false
+check-return-types = false
+skip-checking-short-docstrings = true
+allow-init-docstring = true
+check-yield-types = false
 
 [tool.deptry]
 extend_exclude = ["examples", "docs"]

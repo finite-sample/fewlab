@@ -59,25 +59,27 @@ def _influence(
     Xn: np.ndarray = X.to_numpy(float)
     X_scaled = Xn / T[:, None]
 
-    if hasattr(counts, "sparse"):
-        # Pandas sparse to scipy sparse? Or just use dot if supported
-        # counts.to_numpy() might be dense.
-        # Let's try to use sparse matrix multiplication if possible.
-        try:
-            if isinstance(counts, pd.DataFrame):
-                # Check if it has sparse values
-                is_sparse = counts.dtypes.apply(pd.api.types.is_sparse).all()
-                if is_sparse:
-                    # Convert to scipy sparse
-                    C_sparse = counts.sparse.to_coo()
-                    G = X_scaled.T @ C_sparse
-                else:
-                    G = X_scaled.T @ counts.to_numpy(float)
-            else:
+    # Check if we have sparse data and can use efficient sparse operations
+    try:
+        # Check if any columns are sparse using pandas API
+        has_sparse = any(
+            hasattr(dtype, "subtype") and dtype.subtype is not None
+            for dtype in counts.dtypes
+        )
+        if has_sparse:
+            # Use pandas sparse accessor if available
+            try:
+                # For sparse DataFrames, convert to scipy sparse for efficient computation
+                import scipy.sparse  # type: ignore[import-untyped]  # noqa: F401
+
+                C_sparse = counts.sparse.to_coo()  # type: ignore[attr-defined]
+                G = X_scaled.T @ C_sparse
+            except (ImportError, AttributeError):
                 G = X_scaled.T @ counts.to_numpy(float)
-        except ImportError:
+        else:
             G = X_scaled.T @ counts.to_numpy(float)
-    else:
+    except (ImportError, AttributeError):
+        # Fallback to dense computation
         G = X_scaled.T @ counts.to_numpy(float)
 
     XtX: np.ndarray = Xn.T @ Xn
@@ -198,9 +200,7 @@ def items_to_label(
     if K <= 0:
         return []
 
-    n: int
-    m: int
-    n, m = counts.shape
+    _, m = counts.shape
     if K > m:
         raise ValueError(f"K={K} exceeds number of items m={m}")
 
