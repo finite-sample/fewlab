@@ -11,6 +11,8 @@ Main API functions:
 - adaptive_core_tail: Data-driven hybrid selection
 """
 
+from importlib.metadata import version
+
 from .balanced import balanced_fixed_size
 from .calibration import calibrate_weights, calibrated_ht_estimator
 from .core import items_to_label, pi_aopt_for_budget
@@ -28,7 +30,7 @@ from .results import (
 from .rowse import row_se_min_labels
 from .selection import topk
 
-__version__ = "1.1.1"
+__version__ = version("fewlab")
 
 __all__ = [
     # Primary interface

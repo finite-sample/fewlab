@@ -34,6 +34,12 @@ docs = [
   "furo>=2024.7.18",
   "sphinx-autodoc-typehints>=1.25",
   "sphinx-design>=0.6.0",
+  "nbsphinx>=0.9.0",
+  "jupyter>=1.0",
+  "ipykernel>=6.0",
+  "matplotlib>=3.4",
+  "seaborn>=0.11",
+  "scipy>=1.7",
 ]
 dev = [
   "pytest>=7.0",
@@ -93,7 +99,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 "tests/*" = ["S101"]
-"examples/*" = ["E402", "F841"]
+"docs/*" = ["E402", "F841"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["fewlab"]
@@ -112,6 +118,7 @@ reportMissingTypeStubs = false
 reportUnknownMemberType = false
 reportUnknownVariableType = false
 reportUnknownArgumentType = false
+exclude = ["docs/evaluate_*.py"]
 
 [tool.pydoclint]
 style = 'google'
@@ -123,6 +130,6 @@ allow-init-docstring = true
 check-yield-types = false
 
 [tool.deptry]
-extend_exclude = ["examples", "docs"]
+extend_exclude = ["docs"]
 ignore_notebooks = true
 pep621_dev_dependency_groups = ["dev", "test", "docs"]
