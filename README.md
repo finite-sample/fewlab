@@ -131,7 +131,12 @@ pip install -e ".[docs]" # Includes documentation building
 
 ## Development
 
-For contributors, see [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions including required pre-commit hooks.
+To contribute to this project, install dependencies and set up pre-commit hooks:
+
+```bash
+uv sync --all-groups
+uv run pre-commit install
+```
 
 ## License
 
