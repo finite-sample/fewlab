@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7.1.4
+      with:
+        version: "latest"
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-groups
+
+    - name: Validate pre-commit config
+      run: |
+        uv run pre-commit --version
+        uv run pre-commit run --all-files --show-diff-on-failure
+
+    - name: Test with pytest
+      run: |
+        uv run pytest tests/ -v
+
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.14"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7.1.4
+      with:
+        version: "latest"
+
+    - name: Build package
+      run: uv build
+
+    - name: Check build artifacts
+      run: |
+        ls -la dist/
+        uv pip install --system dist/*.whl
+        python -c "import fewlab; print('Package installed successfully')"
