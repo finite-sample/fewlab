@@ -17,9 +17,9 @@ fewlab: fewest items to label for most efficient unbiased OLS
    :target: https://opensource.org/licenses/MIT
    :alt: License: MIT
 
-.. image:: https://img.shields.io/badge/python-3.9+-blue.svg
+.. image:: https://img.shields.io/pypi/pyversions/fewlab.svg
    :target: https://www.python.org/downloads/
-   :alt: Python 3.9+
+   :alt: Python versions
 
 **Problem**: You have usage data (users × items) and want to understand how user traits relate to item preferences. But you can't afford to label every item. This tool tells you which items to label first to get the most accurate analysis.
 

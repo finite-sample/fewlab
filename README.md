@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/fewlab.svg)](https://pypi.org/project/fewlab/)
 [![Downloads](https://pepy.tech/badge/fewlab)](https://pepy.tech/project/fewlab)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/pypi/pyversions/fewlab.svg)](https://www.python.org/downloads/)
 
 **Problem**: You have usage data (users × items) and want to understand how user traits relate to item preferences. But you can't afford to label every item. This tool tells you which items to label first to get the most accurate analysis.
 
@@ -130,7 +130,7 @@ The basic approach gives you optimal items to label but technically requires som
 pip install fewlab
 ```
 
-**Requirements**: Python 3.12+, numpy ≥1.23, pandas ≥1.5
+**Requirements**: Python 3.12-3.14, numpy ≥1.23, pandas ≥1.5
 
 **Development**:
 ```bash
@@ -146,7 +146,7 @@ pip install -e ".[docs]" # Includes documentation building
 - 🔧 **Standardized Parameters**: All functions use `budget` parameter (was `K`), no backward compatibility
 - 📈 **Comprehensive Diagnostics**: Automatic condition number monitoring and ridge selection
 - 🧪 **Enhanced Testing**: Full test coverage for new Design class and edge cases
-- 🐍 **Modern Python**: Requires Python 3.12+, uses latest type annotations
+- 🐍 **Modern Python**: Requires Python 3.12-3.14, uses latest type annotations
 - 🛡️ **Robust Validation**: Enhanced input validation with helpful error messages
 
 ## Development
