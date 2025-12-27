@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 
 
-def make_synth(n=300, m=400, p=6, seed=123):
-    rng = np.random.default_rng(seed)
+def make_synth(n=300, m=400, p=6, random_state=123):
+    rng = np.random.default_rng(random_state)
     X = pd.DataFrame(
         rng.normal(size=(n, p - 1)), columns=[f"x{k}" for k in range(p - 1)]
     )

@@ -15,26 +15,49 @@ import pandas as pd
 from .constants import DIVISION_EPS
 
 
+def _get_random_generator(
+    random_state: None | int | np.random.Generator,
+) -> np.random.Generator:
+    """
+    Create or validate a numpy random generator.
+
+    Args:
+        random_state: Random state specification. Can be:
+            - None: Creates a new generator with default seed
+            - int: Creates a generator with the given seed
+            - np.random.Generator: Returns the generator as-is
+
+    Returns:
+        A numpy random number generator.
+
+    Examples:
+        >>> rng = _get_random_generator(42)
+        >>> rng = _get_random_generator(None)
+        >>> existing_rng = np.random.default_rng(123)
+        >>> rng = _get_random_generator(existing_rng)
+    """
+    if isinstance(random_state, np.random.Generator):
+        return random_state
+    else:
+        return np.random.default_rng(random_state)
+
+
 def compute_g_matrix(counts: pd.DataFrame, X: pd.DataFrame) -> np.ndarray:
     """
     Compute the regression projection matrix G = X^T V.
 
-    Parameters
-    ----------
-    counts : pd.DataFrame, shape (n, m)
-        Count matrix with rows=units, columns=items.
-    X : pd.DataFrame, shape (n, p)
-        Covariate matrix, index must align with counts.index.
+    Args:
+        counts: Count matrix with units as rows and items as columns (shape (n, m)).
+        X: Covariate matrix aligned with `counts.index` (shape (n, p)).
 
-    Returns
-    -------
-    np.ndarray, shape (p, m)
-        Regression projections g_j = X^T v_j for all items.
+    Returns:
+        Regression projections g_j = X^T v_j for all items (shape (p, m)).
 
-    Notes
-    -----
-    This is a common computation used in multiple modules.
-    V is the normalized count matrix where v_j = counts_j / row_totals.
+    Raises:
+        ValueError: If indices are misaligned or every row sum is zero.
+
+    Notes:
+        This helper normalizes counts into the matrix V where v_j = counts_j / row_totals.
     """
     if not counts.index.equals(X.index):
         raise ValueError("counts.index must align with X.index")
@@ -60,17 +83,13 @@ def validate_fraction(value: float, name: str = "fraction") -> None:
     """
     Validate that a value is a proper fraction in (0, 1).
 
-    Parameters
-    ----------
-    value : float
-        The value to validate.
-    name : str
-        Name of the parameter for error messages.
+    Args:
+        value: Value to validate.
+        name: Label for error messages.
 
-    Raises
-    ------
-    ValueError
-        If value is not in the interval (0, 1).
+    Raises:
+        TypeError: If the value is not numeric.
+        ValueError: If the value is not strictly between 0 and 1.
     """
     if not isinstance(value, int | float):
         raise TypeError(f"{name} must be numeric, got {type(value).__name__}")
@@ -84,17 +103,12 @@ def compute_horvitz_thompson_weights(
     """
     Compute Horvitz-Thompson weights (1/pi) for selected items.
 
-    Parameters
-    ----------
-    pi : pd.Series
-        Inclusion probabilities for all items.
-    selected : pd.Index or sequence of str
-        Selected item identifiers.
+    Args:
+        pi: Inclusion probabilities for all items.
+        selected: Identifiers for the sampled items.
 
-    Returns
-    -------
-    pd.Series
-        HT weights indexed by selected items.
+    Returns:
+        Horvitz-Thompson weights indexed by the selected items.
     """
     ht_weights = 1.0 / (pi + DIVISION_EPS)
     assert isinstance(ht_weights, pd.Series), "Expected pd.Series from division"
@@ -108,15 +122,11 @@ def align_indices(*dataframes: pd.DataFrame | pd.Series) -> bool:
     """
     Check if all dataframes/series have aligned indices.
 
-    Parameters
-    ----------
-    *dataframes : pd.DataFrame or pd.Series
-        DataFrames or Series to check.
+    Args:
+        *dataframes: Data objects to compare.
 
-    Returns
-    -------
-    bool
-        True if all indices are equal, False otherwise.
+    Returns:
+        True if all indices match, otherwise False.
     """
     if len(dataframes) < 2:
         return True
@@ -131,22 +141,15 @@ def get_item_positions(
     """
     Map item names to their positions in a reference index.
 
-    Parameters
-    ----------
-    items : pd.Index or sequence of str
-        Items to map.
-    reference : pd.Index
-        Reference index containing all items.
+    Args:
+        items: Item identifiers to map.
+        reference: Index containing the full set of items.
 
-    Returns
-    -------
-    np.ndarray
-        Integer positions of items in reference.
+    Returns:
+        Integer positions of `items` within `reference`.
 
-    Raises
-    ------
-    ValueError
-        If any item is not found in reference.
+    Raises:
+        ValueError: If any item is missing from the reference index.
     """
     col_to_pos = {col: i for i, col in enumerate(reference)}
     try:

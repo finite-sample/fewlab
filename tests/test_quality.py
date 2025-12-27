@@ -27,9 +27,9 @@ def compute_w(counts, X, ridge=None):
 
 
 def test_selected_items_have_higher_w():
-    counts, X = make_synth(n=120, m=200, p=6, seed=1234)
+    counts, X = make_synth(n=120, m=200, p=6, random_state=1234)
     K = 30
-    chosen = items_to_label(counts, X, K=K)
+    chosen = items_to_label(counts, X, budget=K)
     w, cols = compute_w(counts, X)
     w_map = {c: w[i] for i, c in enumerate(cols)}
     w_chosen = np.median([w_map[c] for c in chosen])

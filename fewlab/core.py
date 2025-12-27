@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
+if TYPE_CHECKING:
+    from .results import ProbabilityResult, SelectionResult
+
 from .constants import (
-    BINARY_SEARCH_HI,
-    BINARY_SEARCH_LO,
     CONDITION_THRESHOLD,
-    MAX_ITER_BINARY_SEARCH,
     PI_MIN_DEFAULT,
     SMALL_RIDGE,
 )
-from .selection import topk
 
 
 @dataclass(slots=True)
@@ -107,106 +107,111 @@ def _influence(
 def pi_aopt_for_budget(
     counts: pd.DataFrame,
     X: pd.DataFrame,
-    K: int,
+    budget: int,
     *,
     pi_min: float = PI_MIN_DEFAULT,
     ensure_full_rank: bool = True,
     ridge: float | None = None,
-) -> pd.Series:
+) -> ProbabilityResult:
     """
-    Return A-opt first-order inclusion probabilities pi_j for expected budget K:
-        pi_j = clip(c * sqrt(w_j), [pi_min, 1]), with c chosen so sum pi = K.
+    Compute A-optimal first-order inclusion probabilities for a target budget.
+
+    The probabilities follow the square-root rule `pi_j = clip(c * sqrt(w_j), [pi_min, 1])` with
+    `c` chosen so that `sum(pi) = budget`.
+
+    Args:
+        counts: Count matrix with non-negative values.
+        X: Feature matrix aligned with `counts.index`.
+        budget: Expected total budget (sum of inclusion probabilities).
+        pi_min: Minimum allowed inclusion probability.
+        ensure_full_rank: Whether to add a small ridge term when `X^T X` is ill-conditioned.
+        ridge: Explicit ridge parameter overriding the automatic heuristic.
+
+    Returns:
+        Probability result with inclusion probabilities and computation diagnostics.
+
+    Note:
+        If `budget < m * pi_min` (where m is the number of items), the budget constraint
+        cannot be satisfied. In this case, the function returns all probabilities as `pi_min`,
+        resulting in `sum(pi) = m * pi_min > budget`, and issues a warning. The violation
+        details are included in the result's diagnostics under `budget_violation`.
+
+    See Also:
+        items_to_label: Deterministic selection using the same influence weights.
+        balanced_fixed_size: Fixed-size balanced sampling using these probabilities.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import numpy as np
+        >>> from fewlab import pi_aopt_for_budget
+        >>>
+        >>> counts = pd.DataFrame(np.random.poisson(5, (1000, 200)))
+        >>> X = pd.DataFrame(np.random.randn(1000, 3))
+        >>> result = pi_aopt_for_budget(counts, X, budget=50)
+        >>> round(result.budget_used, 1)
+        50.0
     """
-    inf: Influence = _influence(
-        counts, X, ensure_full_rank=ensure_full_rank, ridge=ridge
+    from .design import Design
+
+    # Create Design instance (caches influence computation)
+    design = Design(
+        counts,
+        X,
+        ridge="auto" if ridge is None else ridge,
+        ensure_full_rank=ensure_full_rank,
     )
-    sqrtw: np.ndarray = np.sqrt(np.maximum(inf.w, 0.0))
-    if K <= 0:
-        return pd.Series(np.full_like(sqrtw, pi_min), index=inf.cols, name="pi")
 
-    m: int = sqrtw.size
-    K = min(K, m)
-
-    def sum_pi(c: float) -> tuple[float, np.ndarray]:
-        pi: np.ndarray = np.clip(c * sqrtw, pi_min, 1.0)
-        return pi.sum(), pi
-
-    lo: float = BINARY_SEARCH_LO
-    hi: float = BINARY_SEARCH_HI
-    for _ in range(MAX_ITER_BINARY_SEARCH):
-        c: float = (lo * hi) ** 0.5
-        s: float
-        s, _ = sum_pi(c)
-        if s > K:
-            hi = c
-        else:
-            lo = c
-    _, pi = sum_pi(hi)
-    return pd.Series(pi, index=inf.cols, name="pi")
+    return design.inclusion_probabilities(budget, pi_min=pi_min)
 
 
 def items_to_label(
     counts: pd.DataFrame,
     X: pd.DataFrame,
-    K: int,
+    budget: int,
     *,
-    item_axis: int = 1,
     ensure_full_rank: bool = True,
     ridge: float | None = None,
-) -> list[str]:
+) -> SelectionResult:
     """
-    Return a deterministic list of item identifiers to label (length K),
-    using the A-opt square-root rule on w_j = g_j^T (X^T X)^{-1} g_j.
+    Select items to label using deterministic A-optimal design.
 
-    Parameters
-    ----------
-    counts : DataFrame (n x m)
-        Nonnegative counts C with rows = units and columns = items.
-        Index must align with X.index.
-    X : DataFrame (n x p)
-        Covariate matrix used in the regression y ~ X.
-        Index must align with counts.index.
-    K : int
-        Desired number of items to label (K <= m).
-    item_axis : {1}
-        Currently only axis=1 (columns=items) is supported. Must be 1.
-    ensure_full_rank : bool
-        If True, and X^T X is rank-deficient, add a small ridge.
-    ridge : float or None
-        If not None, use (X^T X + ridge I)^{-1} explicitly.
+    Influence weights are computed as `w_j = g_j^T (X^T X)^{-1} g_j`, and the top entries are
+    returned.
 
-    Returns
-    -------
-    list
-        A list of item identifiers (counts.columns) to label, deterministic.
+    Args:
+        counts: Count matrix with units as rows and items as columns.
+        X: Feature matrix aligned with `counts.index`.
+        budget: Number of items to select.
+        ensure_full_rank: Whether to add a ridge term when `X^T X` is ill-conditioned.
+        ridge: Optional ridge parameter overriding the automatic heuristic.
 
-    Notes
-    -----
-    - We compute T_i = sum_j c_ij, v_j = c_{·j}/T, g_j = X^T v_j, and
-      w_j = g_j^T (X^T X)^{-1} g_j. We then pick the top-K items by w_j.
-    - This deterministically approximates the fixed-budget A-opt solution.
-    - If ridge is None but X is ill-conditioned, a tiny ridge is applied if
-      ensure_full_rank is True.
+    Returns:
+        Selection result with items, influence weights, and diagnostics.
+
+    See Also:
+        pi_aopt_for_budget: Compute inclusion probabilities for the same design.
+        greedy_aopt_selection: Greedy sequential variant.
+        core_plus_tail: Hybrid deterministic and probabilistic selection.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import numpy as np
+        >>> from fewlab import items_to_label
+        >>>
+        >>> counts = pd.DataFrame(np.random.poisson(5, (1000, 200)))
+        >>> X = pd.DataFrame(np.random.randn(1000, 3))
+        >>> result = items_to_label(counts, X, budget=50)
+        >>> len(result.selected)
+        50
     """
-    if not isinstance(counts, pd.DataFrame) or not isinstance(X, pd.DataFrame):
-        raise TypeError("counts and X must be pandas DataFrames")
+    from .design import Design
 
-    if not counts.index.equals(X.index):
-        raise ValueError("counts.index must align with X.index")
-
-    if item_axis != 1:
-        raise ValueError(f"item_axis must be 1, got {item_axis}")
-
-    if K <= 0:
-        return []
-
-    _, m = counts.shape
-    if K > m:
-        raise ValueError(f"K={K} exceeds number of items m={m}")
-
-    # Pick top-K items by w
-    inf: Influence = _influence(
-        counts, X, ensure_full_rank=ensure_full_rank, ridge=ridge
+    # Create Design instance (caches influence computation)
+    design = Design(
+        counts,
+        X,
+        ridge="auto" if ridge is None else ridge,
+        ensure_full_rank=ensure_full_rank,
     )
-    chosen: np.ndarray = topk(inf.w, K)
-    return list(pd.Index(inf.cols)[chosen])
+
+    return design.select(budget, method="deterministic")

@@ -7,119 +7,110 @@ deterministic high-influence selection with balanced probabilistic sampling.
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 import pandas as pd
 
 from .balanced import balanced_fixed_size
 from .constants import DIVISION_EPS
 from .core import _influence, items_to_label, pi_aopt_for_budget
+from .results import CoreTailResult
 from .utils import (
     compute_horvitz_thompson_weights,
     get_item_positions,
     validate_fraction,
 )
-
-# Type aliases for commonly used types (Python 3.12+)
-type SelectionResult = tuple[pd.Index, pd.Series, dict[str, Any]]
+from .validation import (
+    ValidationError,
+    validate_budget,
+    validate_counts_matrix,
+    validate_data_alignment,
+    validate_features_matrix,
+)
 
 
 def core_plus_tail(
     counts: pd.DataFrame,
     X: pd.DataFrame,
-    K: int,
+    budget: int,
     *,
     tail_frac: float = 0.2,
-    seed: int | None = None,
+    random_state: None | int | np.random.Generator = None,
     ensure_full_rank: bool = True,
     ridge: float | None = None,
-) -> SelectionResult:
+) -> CoreTailResult:
     """
-    Hybrid sampler combining deterministic core with balanced probabilistic tail.
+    Hybrid sampler combining a deterministic core with a balanced probabilistic tail.
 
     Strategy:
-    1. Select K_core = (1-tail_frac)*K items deterministically (highest w_j)
-    2. Compute A-optimal π for full budget K
-    3. Select K_tail = K - K_core items from remainder using balanced sampling
+        1. Select `budget_core = (1 - tail_frac) * budget` items deterministically (largest `w_j`).
+        2. Compute A-optimal inclusion probabilities for the full budget.
+        3. Draw the remaining `budget_tail` items using balanced sampling.
 
-    Examples
-    --------
-    >>> import pandas as pd
-    >>> import numpy as np
-    >>> from fewlab import core_plus_tail
-    >>>
-    >>> # Survey data with 1000 units and 200 items
-    >>> counts = pd.DataFrame(np.random.poisson(10, (1000, 200)))
-    >>> X = pd.DataFrame(np.random.randn(1000, 5))  # 5 covariates
-    >>>
-    >>> # Select 50 items: 80% deterministic, 20% probabilistic
-    >>> selected, pi, info = core_plus_tail(counts, X, K=50, tail_frac=0.2)
-    >>>
-    >>> # Use calibrated weights for estimation
-    >>> from fewlab import calibrate_weights, calibrated_ht_estimator
-    >>> weights = calibrate_weights(pi, info['g'], selected)
-    >>>
-    >>> # info contains:
-    >>> # - info['core']: 40 deterministic items (highest influence)
-    >>> # - info['tail']: 10 probabilistic items (balanced sampling)
-    >>> # - info['weights']: Standard HT weights
-    >>> # - info['tail_only_weights']: Mixed weights for variance reduction
+    Args:
+        counts: Count matrix with units as rows and candidate items as columns.
+        X: Feature matrix aligned with `counts.index`.
+        budget: Total number of items to select.
+        tail_frac: Fraction of the budget allocated to the probabilistic tail.
+        random_state: Random state for balanced tail selection. Can be None, int, or Generator.
+        ensure_full_rank: Whether to regularize `X^T X` if it is rank-deficient.
+        ridge: Optional ridge penalty added to `X^T X`.
 
-    Parameters
-    ----------
-    counts : pd.DataFrame, shape (n, m)
-        Count matrix with rows=units, columns=items.
-    X : pd.DataFrame, shape (n, p)
-        Covariate matrix, index must align with counts.index.
-    K : int
-        Total budget (number of items to select).
-    tail_frac : float, default=0.2
-        Fraction of budget allocated to probabilistic tail (0 < tail_frac < 1).
-    seed : int, optional
-        Random seed for balanced tail selection.
-    ensure_full_rank : bool
-        If True, add ridge to X^T X if rank-deficient.
-    ridge : float, optional
-        Explicit ridge parameter for (X^T X + ridge I)^{-1}.
+    Returns:
+        Selection result containing the chosen items, inclusion probabilities, and metadata.
 
-    Returns
-    -------
-    selected : pd.Index
-        Selected item identifiers (length K).
-    pi : pd.Series
-        Inclusion probabilities for all items (computed for full budget K).
-    info : dict
-        Additional information including:
-        - 'core': Items in deterministic core
-        - 'tail': Items in probabilistic tail
-        - 'weights': Suggested weights (1/pi for selected items)
-        - 'tail_only_weights': Alternative weights (1/pi for core, 1.0 for tail)
+    Raises:
+        ValidationError: If inputs fail validation or the core/tail split is infeasible.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import numpy as np
+        >>> from fewlab import core_plus_tail
+        >>>
+        >>> counts = pd.DataFrame(np.random.poisson(10, (1000, 200)))
+        >>> X = pd.DataFrame(np.random.randn(1000, 5))
+        >>> result = core_plus_tail(counts, X, budget=50, tail_frac=0.2)
+        >>> result.selected.shape
+        (50,)
     """
+    # Validate inputs
+    counts = validate_counts_matrix(counts)
+    X = validate_features_matrix(X)
+    counts, X = validate_data_alignment(counts, X)
+    budget = validate_budget(budget, counts.shape[1])
     validate_fraction(tail_frac, "tail_frac")
 
-    _, m = counts.shape
-    K = min(K, m)
-    K_core = int((1 - tail_frac) * K)
-    K_tail = K - K_core
+    budget_core = int((1 - tail_frac) * budget)
+    budget_tail = budget - budget_core
 
-    if K_core <= 0 or K_tail <= 0:
-        raise ValueError(f"Invalid split: K_core={K_core}, K_tail={K_tail}")
+    if budget_core <= 0 or budget_tail <= 0:
+        raise ValidationError(
+            f"Invalid split: budget_core={budget_core}, budget_tail={budget_tail}",
+            f"Adjust tail_frac for budget={budget}",
+        )
 
-    # Step 1: Deterministic core selection (top-K_core by w_j)
-    core_items = items_to_label(
-        counts=counts, X=X, K=K_core, ensure_full_rank=ensure_full_rank, ridge=ridge
+    # Step 1: Deterministic core selection
+    core_result = items_to_label(
+        counts=counts,
+        X=X,
+        budget=budget_core,
+        ensure_full_rank=ensure_full_rank,
+        ridge=ridge,
     )
-    core = pd.Index(core_items)
+    core = core_result.selected
 
     # Step 2: Compute A-optimal π for full budget
-    pi = pi_aopt_for_budget(
-        counts=counts, X=X, K=K, ensure_full_rank=ensure_full_rank, ridge=ridge
+    pi_result = pi_aopt_for_budget(
+        counts=counts,
+        X=X,
+        budget=budget,
+        ensure_full_rank=ensure_full_rank,
+        ridge=ridge,
     )
+    pi = pi_result.probabilities
 
     # Step 3: Balanced selection from remainder
     remainder = pi.index.difference(core)
-    if len(remainder) < K_tail:
+    if len(remainder) < budget_tail:
         # Edge case: not enough items left, take all remainder
         tail = remainder
         selected = core.union(tail)
@@ -136,8 +127,15 @@ def core_plus_tail(
         pi_remainder = pi.loc[remainder]
 
         # Balanced sampling for tail
-        tail = balanced_fixed_size(pi=pi_remainder, g=g_remainder, K=K_tail, seed=seed)
+        tail = balanced_fixed_size(
+            pi=pi_remainder,
+            g=g_remainder,
+            budget=budget_tail,
+            random_state=random_state,
+        )
         selected = core.union(tail)
+
+    selected.name = "selected_items"
 
     # Compute suggested weights
     weights_ht = compute_horvitz_thompson_weights(pi, selected)
@@ -147,57 +145,57 @@ def core_plus_tail(
     weights_mixed.loc[core] = (1.0 / pi).reindex(core)
     weights_mixed.loc[tail] = 1.0  # Intentional bias for variance reduction
 
-    info = {
-        "core": core,
-        "tail": tail,
-        "weights": weights_ht,
-        "tail_only_weights": weights_mixed,
-        "K_core": K_core,
-        "K_tail": K_tail,
+    diagnostics = {
+        "budget_core": budget_core,
+        "budget_tail": budget_tail,
         "tail_frac": tail_frac,
     }
 
-    return selected, pi, info
+    return CoreTailResult(
+        selected=selected,
+        probabilities=pi,
+        core=core,
+        tail=tail,
+        ht_weights=weights_ht,
+        mixed_weights=weights_mixed,
+        diagnostics=diagnostics,
+    )
 
 
 def adaptive_core_tail(
     counts: pd.DataFrame,
     X: pd.DataFrame,
-    K: int,
+    budget: int,
     *,
     min_tail_frac: float = 0.1,
     max_tail_frac: float = 0.4,
     condition_threshold: float = 1e6,
-    seed: int | None = None,
-) -> SelectionResult:
+    random_state: None | int | np.random.Generator = None,
+) -> CoreTailResult:
     """
-    Adaptive core+tail selection with data-driven tail fraction.
+    Adaptive core+tail selection with a data-driven tail fraction.
 
-    Automatically determines optimal tail_frac based on:
-    - Condition number of X^T X (higher -> more tail)
-    - Distribution of influence weights w_j (more skewed -> less tail)
+    The routine increases the tail fraction when `X^T X` is poorly conditioned and decreases it
+    when influence weights are highly concentrated.
 
-    Parameters
-    ----------
-    counts : pd.DataFrame
-        Count matrix.
-    X : pd.DataFrame
-        Covariate matrix.
-    K : int
-        Total budget.
-    min_tail_frac : float, default=0.1
-        Minimum fraction for tail.
-    max_tail_frac : float, default=0.4
-        Maximum fraction for tail.
-    condition_threshold : float
-        Threshold for considering X^T X ill-conditioned.
-    seed : int, optional
-        Random seed.
+    Args:
+        counts: Count matrix.
+        X: Feature matrix.
+        budget: Total number of items to select.
+        min_tail_frac: Minimum allowable tail fraction.
+        max_tail_frac: Maximum allowable tail fraction.
+        condition_threshold: Baseline condition number scale.
+        random_state: Random state for the balanced sampling step. Can be None, int, or Generator.
 
-    Returns
-    -------
-    Same as core_plus_tail, with adaptive tail_frac in info dict.
+    Returns:
+        Selection result identical to `core_plus_tail`, with adaptive metadata in `info`.
     """
+    # Validate inputs
+    counts = validate_counts_matrix(counts)
+    X = validate_features_matrix(X)
+    counts, X = validate_data_alignment(counts, X)
+    budget = validate_budget(budget, counts.shape[1])
+
     # Compute condition number
     Xn = X.to_numpy()
     XtX = Xn.T @ Xn
@@ -213,9 +211,9 @@ def adaptive_core_tail(
 
     # 2. More skewed w distribution -> less tail (core captures most influence)
     w_sorted = np.sort(w)[::-1]
-    if len(w_sorted) > K:
-        # Ratio of top-K influence to total
-        concentration = w_sorted[:K].sum() / (w.sum() + DIVISION_EPS)
+    if len(w_sorted) > budget:
+        # Ratio of top-budget influence to total
+        concentration = w_sorted[:budget].sum() / (w.sum() + DIVISION_EPS)
     else:
         concentration = 0.5
     skew_score = 1 - concentration
@@ -225,14 +223,31 @@ def adaptive_core_tail(
     tail_frac = min_tail_frac + combined_score * (max_tail_frac - min_tail_frac)
 
     # Use computed tail_frac
-    selected, pi, info = core_plus_tail(
-        counts=counts, X=X, K=K, tail_frac=tail_frac, seed=seed
+    result = core_plus_tail(
+        counts=counts,
+        X=X,
+        budget=budget,
+        tail_frac=tail_frac,
+        random_state=random_state,
     )
 
-    # Add adaptive info
-    info["adaptive"] = True
-    info["condition_number"] = cond
-    info["concentration_ratio"] = concentration
-    info["adaptive_tail_frac"] = tail_frac
+    # Add adaptive info to existing diagnostics
+    adaptive_diagnostics = result.diagnostics.copy()
+    adaptive_diagnostics.update(
+        {
+            "adaptive": True,
+            "condition_number": cond,
+            "concentration_ratio": concentration,
+            "adaptive_tail_frac": tail_frac,
+        }
+    )
 
-    return selected, pi, info
+    return CoreTailResult(
+        selected=result.selected,
+        probabilities=result.probabilities,
+        core=result.core,
+        tail=result.tail,
+        ht_weights=result.ht_weights,
+        mixed_weights=result.mixed_weights,
+        diagnostics=adaptive_diagnostics,
+    )

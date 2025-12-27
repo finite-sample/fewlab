@@ -32,67 +32,29 @@ def calibrate_weights(
     """
     Compute calibrated weights for selected items using GREG/Deville-Särndal calibration.
 
-    Solves the optimization problem:
-        min ||w - d||^2  s.t. G_S w = t
-    where d = 1/pi are base HT weights, G_S is the matrix of g-vectors for selected items,
-    and t are population totals.
+    Args:
+        pi: Inclusion probabilities for all items (index = item names).
+        g: Regression projections `g_j = X^T v_j` for all items (shape `(p, m)`).
+        selected: Item identifiers drawn in the sample.
+        pop_totals: Known population totals (shape `(p,)`); defaults to `g.sum(axis=1)`.
+        distance: Calibration distance measure; currently only `"chi2"` is supported.
+        ridge: Ridge regularization parameter for numerical stability.
+        nonneg: Whether to enforce non-negative calibrated weights.
 
-    Examples
-    --------
-    >>> import pandas as pd
-    >>> import numpy as np
-    >>> from fewlab import calibrate_weights, _influence
-    >>>
-    >>> # Sample data
-    >>> counts = pd.DataFrame(np.random.poisson(5, (100, 50)))
-    >>> X = pd.DataFrame(np.random.randn(100, 3))
-    >>> selected = counts.columns[:20]
-    >>>
-    >>> # Compute influence and calibrate
-    >>> inf = _influence(counts, X)
-    >>> pi = pd.Series(0.4, index=counts.columns)
-    >>> weights = calibrate_weights(pi, inf.g, selected)
-    >>>
-    >>> # Weights will satisfy calibration constraint:
-    >>> # sum(weights * g_selected) ≈ sum(g_all)
+    Returns:
+        Calibrated weights indexed by the selected items.
 
-    Parameters
-    ----------
-    pi : pd.Series
-        Inclusion probabilities for all items (index = item names).
-    g : np.ndarray, shape (p, m)
-        Regression projections g_j = X^T v_j for all items.
-    selected : sequence of str or pd.Index
-        Item identifiers that were actually selected.
-    pop_totals : np.ndarray, shape (p,), optional
-        Known population totals. If None, uses g.sum(axis=1).
+    Raises:
+        NotImplementedError: If `distance` is not `"chi2"`.
+        ValueError: If `pop_totals` has the wrong shape.
 
-    distance : {'chi2', 'euclidean'}
-        Distance measure for calibration. Currently only 'chi2' is implemented.
+    Notes:
+        The closed-form solution for chi-square distance is
+        `w* = d_S + G_S^T (G_S G_S^T + ridge I)^{-1} (t - G_S d_S)` where `d_S` are base weights.
 
-    ridge : float
-        Ridge regularization parameter for numerical stability.
-
-    nonneg : bool
-        If True, enforce non-negative weights (may slightly violate calibration).
-
-    Returns
-    -------
-    pd.Series
-        Calibrated weights indexed by selected items.
-
-    Notes
-    -----
-    The closed-form solution for chi-square distance is:
-        w* = d_S + G_S^T (G_S G_S^T + ridge I)^{-1} (t - G_S d_S)
-    where d_S are the base weights for selected items.
-
-    References
-    ----------
-    Deville, J.-C., & Särndal, C.-E. (1992). Calibration estimators in survey sampling.
-    Journal of the American Statistical Association, 87(418), 376-382.
-
-
+    References:
+        Deville, J.-C., & Särndal, C.-E. (1992). Calibration estimators in survey sampling.
+        Journal of the American Statistical Association, 87(418), 376-382.
     """
     if distance != "chi2":
         raise NotImplementedError(f"Distance '{distance}' not implemented yet")
@@ -150,26 +112,14 @@ def calibrated_ht_estimator(
     """
     Compute calibrated Horvitz-Thompson estimator for row shares.
 
-    For each row i, estimates:
-        y_i = (1/T_i) * sum_{j in S} w_j * a_j * C_ij
-    where w_j are calibrated weights, a_j are labels, and C_ij are counts.
+    Args:
+        counts: Count matrix with rows as units and columns as items.
+        labels: Item labels for the selected items.
+        weights: Calibrated weights for the selected items.
+        normalize_by_total: Whether to divide by row totals to obtain shares.
 
-    Parameters
-    ----------
-    counts : pd.DataFrame, shape (n, m)
-        Count matrix with rows=units, columns=items.
-    labels : pd.Series
-        Item labels (only for selected items).
-    weights : pd.Series
-        Calibrated weights for selected items.
-    normalize_by_total : bool
-        If True, divide by row totals T_i to get shares.
-
-    Returns
-    -------
-    pd.Series
-        Estimated row shares (or totals if normalize_by_total=False).
-
+    Returns:
+        Estimated row shares (or totals if `normalize_by_total` is False).
     """
     # Align weights and labels with counts columns
     w = weights.reindex(counts.columns).fillna(0.0).to_numpy(dtype=float)

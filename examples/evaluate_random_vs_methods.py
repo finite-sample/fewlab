@@ -38,7 +38,6 @@ if str(REPO_ROOT) not in sys.path:
 # Import FewLab methods after path setup
 import fewlab  # noqa: E402
 from fewlab.utils import (  # noqa: E402
-    compute_g_matrix,
     compute_horvitz_thompson_weights,
 )
 
@@ -54,7 +53,7 @@ class SimConfig:
     n_sims: int = 150  # Number of simulation runs
     lambda_counts: float = 15.0  # Poisson parameter for count generation
     signal_to_noise: float = 1.5  # Signal-to-noise ratio
-    seed: int = 42
+    random_state: int = 42
     count_heterogeneity: float = 5.0  # Variance in count generation
 
 
@@ -186,15 +185,18 @@ def sample_balanced(
     """Balanced fixed-size sampling."""
     start_time = time.time()
 
-    # First compute A-optimal inclusion probabilities
-    pi = fewlab.pi_aopt_for_budget(counts, X, K)
-
-    # Compute g matrix
-    g = compute_g_matrix(counts, X)
+    # Compute A-optimal inclusion probabilities with influence projections
+    prob_result = fewlab.pi_aopt_for_budget(counts, X, K)
 
     # Balanced sampling
     seed = rng.integers(0, 2**31)
-    selected = fewlab.balanced_fixed_size(pi, g, K, seed=seed)
+    selected = fewlab.balanced_fixed_size(
+        prob_result.probabilities,
+        prob_result.influence_projections,
+        K,
+        random_state=seed,
+    )
+    pi = prob_result.probabilities
 
     elapsed = time.time() - start_time
     return selected, pi, elapsed
@@ -207,7 +209,9 @@ def sample_hybrid_core_tail(
     start_time = time.time()
 
     seed = rng.integers(0, 2**31)
-    selected, pi, info = fewlab.core_plus_tail(counts, X, K, tail_frac=0.3, seed=seed)
+    result = fewlab.core_plus_tail(counts, X, K, tail_frac=0.3, random_state=seed)
+    selected = result.selected
+    pi = result.probabilities
 
     elapsed = time.time() - start_time
     return selected, pi, elapsed
@@ -220,7 +224,9 @@ def sample_adaptive_hybrid(
     start_time = time.time()
 
     seed = rng.integers(0, 2**31)
-    selected, pi, info = fewlab.adaptive_core_tail(counts, X, K, seed=seed)
+    result = fewlab.adaptive_core_tail(counts, X, K, random_state=seed)
+    selected = result.selected
+    pi = result.probabilities
 
     elapsed = time.time() - start_time
     return selected, pi, elapsed
@@ -294,7 +300,7 @@ def run_single_simulation(
 
 def run_simulations(cfg: SimConfig) -> pd.DataFrame:
     """Run multiple simulations and aggregate results."""
-    rng = np.random.default_rng(cfg.seed)
+    rng = np.random.default_rng(cfg.random_state)
 
     methods = {
         "Random": sample_random,
@@ -522,7 +528,7 @@ def main():
         p_features=5,
         K_budget=40,
         n_sims=100,
-        seed=42,
+        random_state=42,
     )
 
     print("Evaluation Configuration:")

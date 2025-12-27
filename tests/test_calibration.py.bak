@@ -144,16 +144,15 @@ class TestHybridMethods:
 
         budget = 20
         result = core_plus_tail(
-            counts=self.counts, X=self.X, budget=budget, tail_frac=0.2, random_state=456
+            counts=self.counts, X=self.X, budget=budget, tail_frac=0.2, seed=456
         )
 
         # Check structured result
-        from fewlab.results import CoreTailResult
+        from fewlab.results import SelectionResult
 
-        assert isinstance(result, CoreTailResult)
+        assert isinstance(result, SelectionResult)
 
-        selected = result.selected
-        pi = result.probabilities
+        selected, pi, info = result.selected, result.probabilities, result.info
 
         # Check outputs
         assert isinstance(selected, pd.Index)
@@ -161,43 +160,43 @@ class TestHybridMethods:
         assert isinstance(pi, pd.Series)
         assert len(pi) == self.m
 
-        # Check core and tail
-        assert isinstance(result.core, pd.Index)
-        assert isinstance(result.tail, pd.Index)
-        assert isinstance(result.ht_weights, pd.Series)
-        assert isinstance(result.mixed_weights, pd.Series)
+        # Check info dict
+        assert "core" in info
+        assert "tail" in info
+        assert "weights" in info
+        assert "tail_only_weights" in info
 
         # Check split
-        assert len(result.core) == result.budget_core
-        assert len(result.tail) == result.budget_tail
-        assert result.budget_core + result.budget_tail == budget
+        assert len(info["core"]) == info["budget_core"]
+        assert len(info["tail"]) == info["budget_tail"]
+        assert info["budget_core"] + info["budget_tail"] == budget
 
         # Core and tail should be disjoint
-        assert len(result.core.intersection(result.tail)) == 0
+        assert len(info["core"].intersection(info["tail"])) == 0
 
         # Union should equal selected
-        assert result.core.union(result.tail).equals(selected)
+        assert info["core"].union(info["tail"]).equals(selected)
 
     def test_core_plus_tail_weights(self):
         """Test weight computation in core+tail."""
         from fewlab.hybrid import core_plus_tail
 
         result = core_plus_tail(counts=self.counts, X=self.X, budget=20, tail_frac=0.3)
-        selected = result.selected
+        selected, pi, info = result.selected, result.probabilities, result.info
 
         # Standard HT weights
-        weights_ht = result.ht_weights
+        weights_ht = info["weights"]
         assert all(weights_ht > 0)
         assert len(weights_ht) == len(selected)
 
         # Mixed weights (tiny-bias)
-        weights_mixed = result.mixed_weights
+        weights_mixed = info["tail_only_weights"]
         assert len(weights_mixed) == len(selected)
 
         # Check mixed weights structure
-        for item in result.core:
+        for item in info["core"]:
             assert weights_mixed[item] == weights_ht[item]  # Same as HT for core
-        for item in result.tail:
+        for item in info["tail"]:
             assert abs(weights_mixed[item] - 1.0) < 1e-6  # Should be 1.0 for tail
 
     def test_core_plus_tail_fractions(self):
@@ -209,13 +208,13 @@ class TestHybridMethods:
             result = core_plus_tail(
                 counts=self.counts, X=self.X, budget=budget, tail_frac=tail_frac
             )
-            selected = result.selected
+            selected, pi, info = result.selected, result.probabilities, result.info
 
             expected_core = int((1 - tail_frac) * budget)
             expected_tail = budget - expected_core
 
-            assert result.budget_core == expected_core
-            assert result.budget_tail == expected_tail
+            assert info["budget_core"] == expected_core
+            assert info["budget_tail"] == expected_tail
             assert len(selected) == budget
 
     def test_adaptive_core_tail(self):
@@ -228,27 +227,26 @@ class TestHybridMethods:
             budget=25,
             min_tail_frac=0.1,
             max_tail_frac=0.4,
-            random_state=789,
+            seed=789,
         )
-        selected = result.selected
-        pi = result.probabilities
+        selected, pi, info = result.selected, result.probabilities, result.info
 
         # Check basic outputs
         assert len(selected) == 25
         assert isinstance(pi, pd.Series)
 
         # Check adaptive info
-        assert result.diagnostics["adaptive"] is True
-        assert "condition_number" in result.diagnostics
-        assert "concentration_ratio" in result.diagnostics
-        assert "adaptive_tail_frac" in result.diagnostics
+        assert info["adaptive"] is True
+        assert "condition_number" in info
+        assert "concentration_ratio" in info
+        assert "adaptive_tail_frac" in info
 
         # Check tail_frac is within bounds
-        assert 0.1 <= result.diagnostics["adaptive_tail_frac"] <= 0.4
+        assert 0.1 <= info["adaptive_tail_frac"] <= 0.4
 
         # Check that it actually used the adaptive fraction
-        actual_tail_frac = result.budget_tail / 25
-        assert abs(actual_tail_frac - result.diagnostics["adaptive_tail_frac"]) < 0.05
+        actual_tail_frac = info["budget_tail"] / 25
+        assert abs(actual_tail_frac - info["adaptive_tail_frac"]) < 0.05
 
     def test_edge_cases(self):
         """Test edge cases for hybrid methods."""
@@ -269,10 +267,10 @@ class TestHybridMethods:
 
         # Very small budget
         result = core_plus_tail(self.counts, self.X, budget=2, tail_frac=0.5)
-        selected = result.selected
+        selected, pi, info = result.selected, result.probabilities, result.info
         assert len(selected) == 2
-        assert result.budget_core == 1
-        assert result.budget_tail == 1
+        assert info["budget_core"] == 1
+        assert info["budget_tail"] == 1
 
 
 class TestIntegration:
@@ -309,8 +307,7 @@ class TestIntegration:
         result = core_plus_tail(
             counts=self.counts, X=self.X, budget=budget, tail_frac=0.25
         )
-        selected = result.selected
-        pi = result.probabilities
+        selected, pi, info = result.selected, result.probabilities, result.info
 
         # Get g matrix
         inf = _influence(self.counts, self.X)
@@ -329,7 +326,7 @@ class TestIntegration:
 
         # Standard HT estimate
         estimate_ht = calibrated_ht_estimator(
-            counts=self.counts, labels=selected_labels, weights=result.ht_weights
+            counts=self.counts, labels=selected_labels, weights=info["weights"]
         )
 
         # Both should produce valid estimates
@@ -343,7 +340,7 @@ class TestIntegration:
         g_total = g.sum(axis=1)
 
         cal_total = g_selected @ calibrated_weights.to_numpy()
-        ht_total = g_selected @ result.ht_weights.to_numpy()
+        ht_total = g_selected @ info["weights"].to_numpy()
 
         cal_error = np.linalg.norm(cal_total - g_total)
         ht_error = np.linalg.norm(ht_total - g_total)

@@ -14,14 +14,25 @@ Main API functions:
 from .balanced import balanced_fixed_size
 from .calibration import calibrate_weights, calibrated_ht_estimator
 from .core import items_to_label, pi_aopt_for_budget
+from .design import Design
 from .greedy import greedy_aopt_selection
 from .hybrid import adaptive_core_tail, core_plus_tail
+from .results import (
+    CoreTailResult,
+    EstimationResult,
+    ProbabilityResult,
+    RowSEResult,
+    SamplingResult,
+    SelectionResult,
+)
 from .rowse import row_se_min_labels
 from .selection import topk
 
-__version__ = "0.3.1"
+__version__ = "1.1.0"
 
 __all__ = [
+    # Primary interface
+    "Design",
     # Core methods
     "items_to_label",
     "pi_aopt_for_budget",
@@ -33,4 +44,10 @@ __all__ = [
     "core_plus_tail",
     "adaptive_core_tail",
     "greedy_aopt_selection",
+    "CoreTailResult",
+    "SamplingResult",
+    "SelectionResult",
+    "ProbabilityResult",
+    "EstimationResult",
+    "RowSEResult",
 ]

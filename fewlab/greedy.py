@@ -1,51 +1,81 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
 
+if TYPE_CHECKING:
+    from .results import SelectionResult
+
 from .constants import SMALL_RIDGE
 from .core import _influence
+from .validation import (
+    validate_budget,
+    validate_counts_matrix,
+    validate_data_alignment,
+    validate_features_matrix,
+)
 
 
 def greedy_aopt_selection(
     counts: pd.DataFrame,
     X: pd.DataFrame,
-    K: int,
+    budget: int,
     *,
     ensure_full_rank: bool = True,
     ridge: float | None = None,
-) -> list[str]:
+) -> SelectionResult:
     """
-    Select K items using a greedy A-optimal strategy.
+    Select items using greedy A-optimal sequential selection.
 
-    Iteratively selects the item that maximally reduces the trace of the
-    covariance matrix (A-optimality). Uses Sherman-Morrison rank-1 updates
-    for efficiency.
+    The algorithm iteratively chooses the item that maximally reduces the trace of the covariance
+    matrix using Sherman-Morrison updates.
 
-    Parameters
-    ----------
-    counts : DataFrame (n x m)
-        Nonnegative counts.
-    X : DataFrame (n x p)
-        Covariate matrix.
-    K : int
-        Number of items to select.
-    ensure_full_rank : bool
-        If True, adds a small ridge if needed.
-    ridge : float | None
-        Explicit ridge parameter.
+    Args:
+        counts: Count matrix with non-negative entries.
+        X: Feature matrix aligned with `counts.index`.
+        budget: Number of items to select sequentially.
+        ensure_full_rank: Whether to add a ridge if the information matrix becomes singular.
+        ridge: Optional explicit ridge parameter.
 
-    Returns
-    -------
-    list[str]
-        List of selected item identifiers.
+    Returns:
+        Selection result with items, influence weights, and diagnostics.
+
+    See Also:
+        items_to_label: Batch A-optimal selection (faster, different results).
+        pi_aopt_for_budget: Compute inclusion probabilities for A-optimal design.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import numpy as np
+        >>> from fewlab import greedy_aopt_selection
+        >>>
+        >>> counts = pd.DataFrame(np.random.poisson(5, (1000, 100)))
+        >>> X = pd.DataFrame(np.random.randn(1000, 3))
+        >>> result = greedy_aopt_selection(counts, X, budget=20)
+        >>> len(result.selected)
+        20
     """
-    if K <= 0:
-        return []
+
+    # Validate inputs
+    counts = validate_counts_matrix(counts)
+    X = validate_features_matrix(X)
+    counts, X = validate_data_alignment(counts, X)
+    budget = validate_budget(budget, counts.shape[1])
+
+    if budget == 0:
+        from .results import SelectionResult
+
+        empty_selected = pd.Index([], name="selected_items")
+        empty_weights = pd.Series([], dtype=float, name="influence_weights")
+        return SelectionResult(
+            selected=empty_selected,
+            influence_weights=empty_weights,
+            diagnostics={"method": "greedy", "budget": budget},
+        )
 
     _, m = counts.shape
-    if K > m:
-        raise ValueError(f"K={K} exceeds number of items m={m}")
 
     # 1. Precompute candidate vectors g_j
     # _influence computes g_j = X^T v_j where v_j is the normalized count column
@@ -94,7 +124,7 @@ def greedy_aopt_selection(
     # Pre-calculate M_inv * g for all candidates to speed up first iteration?
     # No, M_inv changes every step.
 
-    for _ in range(K):
+    for _ in range(budget):
         best_j = -1
 
         # This loop is O(m * p^2) which might be slow for large m.
@@ -138,4 +168,23 @@ def greedy_aopt_selection(
         # Outer product update
         M_inv -= np.outer(u_best, u_best) / denom_best
 
-    return [inf.cols[i] for i in selected_indices]
+    from .results import SelectionResult
+
+    selected_items = pd.Index([inf.cols[i] for i in selected_indices])
+    selected_items.name = "selected_items"
+
+    # Create influence weights series for the result
+    influence_weights = pd.Series(inf.w, index=inf.cols, name="influence_weights")
+
+    diagnostics = {
+        "method": "greedy",
+        "budget": budget,
+        "ensure_full_rank": ensure_full_rank,
+        "ridge": ridge,
+    }
+
+    return SelectionResult(
+        selected=selected_items,
+        influence_weights=influence_weights,
+        diagnostics=diagnostics,
+    )

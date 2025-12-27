@@ -6,6 +6,8 @@ from fewlab import greedy_aopt_selection, items_to_label
 
 def test_greedy_selection_basic():
     """Test that greedy selection returns correct number of items."""
+    from fewlab.results import SelectionResult
+
     n, m, p = 100, 20, 3
     rng = np.random.default_rng(42)
 
@@ -14,12 +16,13 @@ def test_greedy_selection_basic():
         rng.poisson(5, size=(n, m)), columns=[f"item{j}" for j in range(m)]
     )
 
-    K = 5
-    selected = greedy_aopt_selection(counts, X, K)
+    budget = 5
+    result = greedy_aopt_selection(counts, X, budget)
 
-    assert len(selected) == K
-    assert len(set(selected)) == K  # No duplicates
-    assert all(item in counts.columns for item in selected)
+    assert isinstance(result, SelectionResult)
+    assert len(result.selected) == budget
+    assert len(set(result.selected)) == budget  # No duplicates
+    assert all(item in counts.columns for item in result.selected)
 
 
 def test_greedy_vs_topk_performance():
@@ -40,11 +43,14 @@ def test_greedy_vs_topk_performance():
     counts_vals[:, 1] = counts_vals[:, 0]
     counts = pd.DataFrame(counts_vals, columns=[f"item{j}" for j in range(m)])
 
-    K = 10
+    budget = 10
 
     # Run both methods
-    sel_greedy = greedy_aopt_selection(counts, X, K)
-    sel_topk = items_to_label(counts, X, K)
+    result_greedy = greedy_aopt_selection(counts, X, budget)
+    result_topk = items_to_label(counts, X, budget)
+
+    sel_greedy = result_greedy.selected
+    sel_topk = result_topk.selected
 
     # Compute A-optimality objective: Trace((X'X + sum g g')^-1)
     # We need to reconstruct g vectors
@@ -100,7 +106,7 @@ def test_sparse_support():
     )
     counts_sparse = counts_dense.astype(pd.SparseDtype(int, 0))
 
-    K = 5
+    budget = 5
     # Should not raise error
-    sel = greedy_aopt_selection(counts_sparse, X, K)
-    assert len(sel) == K
+    result = greedy_aopt_selection(counts_sparse, X, budget)
+    assert len(result.selected) == budget

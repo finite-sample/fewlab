@@ -27,7 +27,6 @@ if str(REPO_ROOT) not in sys.path:
 # Local imports after path setup
 import fewlab  # noqa: E402
 from fewlab.utils import (  # noqa: E402
-    compute_g_matrix,
     compute_horvitz_thompson_weights,
 )
 
@@ -43,7 +42,7 @@ class BudgetConfig:
     n_sims: int = 100
     lambda_counts: float = 15.0
     signal_to_noise: float = 1.5
-    seed: int = 42
+    random_state: int = 42
     count_heterogeneity: float = 3.0
 
     def __post_init__(self):
@@ -110,14 +109,21 @@ def sample_and_estimate(
         pi[selected] = 1.0
 
     elif method_name == "Balanced":
-        pi = fewlab.pi_aopt_for_budget(counts, X, K)
-        g = compute_g_matrix(counts, X)
+        prob_result = fewlab.pi_aopt_for_budget(counts, X, K)
         seed = rng.integers(0, 2**31)
-        selected = fewlab.balanced_fixed_size(pi, g, K, seed=seed)
+        selected = fewlab.balanced_fixed_size(
+            prob_result.probabilities,
+            prob_result.influence_projections,
+            K,
+            random_state=seed,
+        )
+        pi = prob_result.probabilities
 
     elif method_name == "Adaptive Hybrid":
         seed = rng.integers(0, 2**31)
-        selected, pi, _ = fewlab.adaptive_core_tail(counts, X, K, seed=seed)
+        result = fewlab.adaptive_core_tail(counts, X, K, random_state=seed)
+        selected = result.selected
+        pi = result.probabilities
 
     else:
         raise ValueError(f"Unknown method: {method_name}")
@@ -142,7 +148,7 @@ def sample_and_estimate(
 
 def run_budget_experiment(cfg: BudgetConfig) -> pd.DataFrame:
     """Run experiments across multiple budget sizes."""
-    rng = np.random.default_rng(cfg.seed)
+    rng = np.random.default_rng(cfg.random_state)
 
     methods = ["Random", "Deterministic A-opt", "Balanced", "Adaptive Hybrid"]
 
@@ -367,7 +373,7 @@ def main():
         budgets=[15, 30, 45, 60, 90, 120],  # 5% to 40%
         n_sims=100,
         count_heterogeneity=3.0,
-        seed=42,
+        random_state=42,
     )
 
     print("Budget Sensitivity Analysis Configuration:")

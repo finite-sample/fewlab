@@ -125,16 +125,18 @@ class TestHybridEdgeCases:
         K = 20
 
         # Very small tail (almost all deterministic)
-        selected, pi, info = core_plus_tail(counts, X, K=K, tail_frac=0.05)
+        result = core_plus_tail(counts, X, budget=K, tail_frac=0.05)
+        selected = result.selected
         assert len(selected) == K
-        assert info["K_tail"] == 1
-        assert info["K_core"] == 19
+        assert result.budget_tail == 1
+        assert result.budget_core == 19
 
         # Very large tail (mostly probabilistic)
-        selected, pi, info = core_plus_tail(counts, X, K=K, tail_frac=0.95)
+        result = core_plus_tail(counts, X, budget=K, tail_frac=0.95)
+        selected = result.selected
         assert len(selected) == K
-        assert info["K_tail"] == 19
-        assert info["K_core"] == 1
+        assert result.budget_tail == 19
+        assert result.budget_core == 1
 
     def test_budget_larger_than_items(self):
         """Test when K > m (budget exceeds item count)."""
@@ -146,9 +148,11 @@ class TestHybridEdgeCases:
         )
         X = pd.DataFrame(np.random.randn(n, p))
 
-        # K larger than m
-        selected, pi, info = core_plus_tail(counts, X, K=50, tail_frac=0.2)
-        assert len(selected) <= m
+        # budget larger than m should raise ValidationError
+        from fewlab.validation import ValidationError
+
+        with pytest.raises(ValidationError):
+            core_plus_tail(counts, X, budget=50, tail_frac=0.2)
 
     def test_insufficient_remainder_for_tail(self):
         """Test when not enough items remain for tail sampling."""
@@ -161,7 +165,8 @@ class TestHybridEdgeCases:
         X = pd.DataFrame(np.random.randn(n, p))
 
         # Large K with small tail_frac might not leave enough for tail
-        selected, pi, info = core_plus_tail(counts, X, K=24, tail_frac=0.1)
+        result = core_plus_tail(counts, X, budget=24, tail_frac=0.1)
+        selected = result.selected
         assert len(selected) == 24
         # Should handle edge case gracefully
 
@@ -178,11 +183,12 @@ class TestHybridEdgeCases:
         X = pd.DataFrame(np.random.randn(n, p))
         X.iloc[:, 1] = X.iloc[:, 0] * 0.99
 
-        selected, pi, info = adaptive_core_tail(counts, X, K=25)
+        result = adaptive_core_tail(counts, X, budget=25)
+        selected = result.selected
 
         assert len(selected) == 25
-        assert "adaptive_tail_frac" in info
-        assert 0.1 <= info["adaptive_tail_frac"] <= 0.4
+        assert "adaptive_tail_frac" in result.diagnostics
+        assert 0.1 <= result.diagnostics["adaptive_tail_frac"] <= 0.4
 
     def test_zero_variance_items(self):
         """Test with items that have zero variance."""
@@ -198,10 +204,11 @@ class TestHybridEdgeCases:
 
         X = pd.DataFrame(np.random.randn(n, p))
 
-        selected, pi, info = core_plus_tail(counts, X, K=15, tail_frac=0.3)
+        result = core_plus_tail(counts, X, budget=15, tail_frac=0.3)
+        selected = result.selected
 
         assert len(selected) == 15
-        assert all(pi > 0)
+        assert all(result.probabilities > 0)
 
 
 class TestNumericalStability:

@@ -5,7 +5,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/fewlab.svg)](https://pypi.org/project/fewlab/)
 [![Downloads](https://pepy.tech/badge/fewlab)](https://pepy.tech/project/fewlab)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
 **Problem**: You have usage data (users × items) and want to understand how user traits relate to item preferences. But you can't afford to label every item. This tool tells you which items to label first to get the most accurate analysis.
 
@@ -30,19 +30,18 @@ Think of it as "statistical leverage"—some items matter more for understanding
 ## Quick Start
 
 ```python
-from fewlab import items_to_label
+from fewlab import Design
 import pandas as pd
 
 # Your data: user features and item usage
 user_features = pd.DataFrame(...)  # User characteristics
 item_usage = pd.DataFrame(...)     # Usage counts per user-item
 
+# Create design (caches expensive computations)
+design = Design(item_usage, user_features)
+
 # Get top 100 items to label
-priority_items = items_to_label(
-    counts=item_usage,
-    X=user_features,
-    K=100
-)
+priority_items = design.select(budget=100)
 
 # Send priority_items to your labeling team
 print(f"Label these items first: {priority_items}")
@@ -51,50 +50,70 @@ print(f"Label these items first: {priority_items}")
 ## Advanced Usage
 
 ```python
-from fewlab import pi_aopt_for_budget, balanced_fixed_size, row_se_min_labels
+from fewlab import Design
+import pandas as pd
 
-# Get inclusion probabilities for expected budget
-probabilities = pi_aopt_for_budget(
-    counts=item_usage,
-    X=user_features,
-    K=100
-)
+# Create design with automatic ridge detection
+design = Design(item_usage, user_features, ridge="auto")
 
-# Balanced sampling with probability constraints
-selected_items = balanced_fixed_size(
-    pi=probabilities,
-    g=influence_projections,
-    K=100,
-    seed=42
-)
+# Multiple selection strategies
+deterministic_items = design.select(budget=100, method="deterministic")
+greedy_items = design.select(budget=100, method="greedy")
 
-# Minimize row-wise standard errors
-optimal_items = row_se_min_labels(
-    counts=item_usage,
-    eps2=error_budget_per_row
-)
+# Probabilistic sampling methods
+balanced_sample = design.sample(budget=100, method="balanced", seed=42)
+hybrid_sample = design.sample(budget=100, method="core_plus_tail", tail_frac=0.3)
+adaptive_sample = design.sample(budget=100, method="adaptive")
+
+# Get inclusion probabilities
+pi_aopt = design.inclusion_probabilities(budget=100, method="aopt")
+pi_rowse = design.inclusion_probabilities(budget=100, method="row_se", eps2=0.01)
+
+# Complete workflow: select, weight, estimate
+selected = design.select(budget=50)
+labels = pd.Series([1, 0, 1, ...], index=selected)  # Your labels
+weights = design.calibrate_weights(selected)
+estimates = design.estimate(selected, labels)
+
+# Access diagnostics
+print(f"Condition number: {design.diagnostics['condition_number']:.2e}")
+print(f"Influence weights: {design.influence_weights.head()}")
 ```
 
 ## What You Get
 
-**Multiple approaches** for optimal item selection:
+**Primary Interface**:
 
-- **`items_to_label()`**: Deterministic top-K items for maximum precision
-- **`pi_aopt_for_budget()`**: Inclusion probabilities for randomized sampling
-- **`balanced_fixed_size()`**: Balanced sampling with probability constraints
-- **`row_se_min_labels()`**: Minimize row-wise standard errors
-- **`topk()`**: Efficient O(n) top-k selection algorithm
+- **`Design`**: Object-oriented API that caches expensive computations and provides unified access to all methods
 
-All methods consider:
-- Item usage patterns across user segments
-- Statistical leverage for regression coefficients
-- Optimal allocation of labeling budget
+**Selection Methods**:
+
+- **`.select(method="deterministic")`**: Batch A-optimal top-budget items (fastest)
+- **`.select(method="greedy")`**: Sequential greedy A-optimal selection
+- **`.sample(method="balanced")`**: Balanced probabilistic sampling
+- **`.sample(method="core_plus_tail")`**: Hybrid deterministic + probabilistic
+- **`.sample(method="adaptive")`**: Data-driven hybrid with automatic parameters
+
+**Probability Methods**:
+
+- **`.inclusion_probabilities(method="aopt")`**: A-optimal square-root rule
+- **`.inclusion_probabilities(method="row_se")`**: Row-wise standard error minimization
+
+**Complete Workflow**:
+
+- **`.calibrate_weights()`**: GREG-style weight calibration
+- **`.estimate()`**: Calibrated Horvitz-Thompson estimation
+- **`.diagnostics`**: Comprehensive design diagnostics
+
+All methods leverage cached influence computations for efficiency and provide consistent, structured results.
 
 ## Practical Considerations
 
-**Choosing K**: Start with 10-20% of items. You can always label more if needed.
+**Choosing budget**: Start with 10-20% of items. You can always label more if needed.
 
-**Validation**: Compare regression stability with different K values. When coefficients stop changing significantly, you have enough labels.
+**Validation**: Compare regression stability with different budget values. When coefficients stop changing significantly, you have enough labels.
+
+**Performance**: The `Design` class caches expensive influence computations, making multiple method calls efficient.
 
 **Limitations**:
 - Works best when usage patterns correlate with user features
@@ -111,7 +130,7 @@ The basic approach gives you optimal items to label but technically requires som
 pip install fewlab
 ```
 
-**Requirements**: Python 3.11+, numpy ≥1.23, pandas ≥1.5
+**Requirements**: Python 3.12+, numpy ≥1.23, pandas ≥1.5
 
 **Development**:
 ```bash
@@ -119,15 +138,16 @@ pip install -e ".[dev]"  # Includes testing, linting, pre-commit hooks
 pip install -e ".[docs]" # Includes documentation building
 ```
 
-## What's New in v0.3.0
+## What's New in v1.0.0
 
-- 🐍 **Modern Python**: Requires Python 3.11+ (breaking change)
-- 📋 **Smart Config**: Docs automatically sync with pyproject.toml metadata
-- 🚀 **Performance**: O(n) top-k selection algorithm (vs O(n log n))
-- 🔧 **Code Quality**: Type hints, constants, eliminated dead code
-- 📚 **Modern Docs**: Furo theme with dark/light mode support
-- 🧪 **Developer Experience**: Pre-commit hooks, comprehensive testing
-- 📦 **Expanded API**: 5 functions for different sampling strategies
+- 🎯 **Object-Oriented API**: New `Design` class caches expensive computations and provides unified interface
+- 🚀 **Performance**: Eliminate redundant influence computations across multiple method calls
+- 📊 **Structured Results**: Typed result classes replace loose tuples for better API consistency
+- 🔧 **Standardized Parameters**: All functions use `budget` parameter (was `K`), no backward compatibility
+- 📈 **Comprehensive Diagnostics**: Automatic condition number monitoring and ridge selection
+- 🧪 **Enhanced Testing**: Full test coverage for new Design class and edge cases
+- 🐍 **Modern Python**: Requires Python 3.12+, uses latest type annotations
+- 🛡️ **Robust Validation**: Enhanced input validation with helpful error messages
 
 ## Development
 

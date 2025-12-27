@@ -12,43 +12,99 @@ from .constants import (
     TOLERANCE_DEFAULT,
     TOLERANCE_STRICT,
 )
+from .utils import _get_random_generator
+from .validation import (
+    ValidationError,
+    validate_budget,
+    validate_probability_series,
+)
 
 
 def balanced_fixed_size(
     pi: pd.Series,
     g: np.ndarray,
-    K: int,
+    budget: int,
     *,
-    seed: int | None = None,
+    random_state: None | int | np.random.Generator = None,
     max_swaps: int = MAX_SWAPS_BALANCED,
     tol: float = TOLERANCE_DEFAULT,
 ) -> pd.Index:
     """
-    Heuristic fixed-size sampler that:
-      1) starts with a K-sized draw from pi (normalized),
-      2) greedily swaps in/out items to reduce ||sum((I/pi)-1) g||_2.
+    Fixed-size balanced sampling with variance reduction.
 
-    Parameters
-    ----------
-    pi : Series (length m), index=items
-    g  : ndarray (p x m) regression projections g_j
-    K  : int fixed sample size
+    Implements a two-step heuristic:
 
-    Returns
-    -------
-    Pandas Index of selected item ids (length K).
+    1. Initial selection proportional to inclusion probabilities pi
+    2. Greedy local search to minimize calibration residual ||sum((I/pi)-1) g||_2
+
+    This balancing procedure aims to reduce the variance of Horvitz-Thompson estimators by
+    making the sample more representative.
+
+    Args:
+        pi: Inclusion probabilities for items. Index contains item identifiers.
+        g: Regression projections g_j = X^T v_j for each item j (shape (p, m)).
+        budget: Fixed sample size (number of items to select).
+        random_state: Random state for reproducible sampling. Can be None, int, or Generator.
+        max_swaps: Maximum number of swap iterations for balancing.
+        tol: Tolerance for stopping criterion (residual norm).
+
+    Returns:
+        Index of selected items. Length equals `budget`.
+
+    Raises:
+        ValidationError: If `pi`, `g`, or `budget` fail validation checks.
+
+    See Also:
+        pi_aopt_for_budget: Compute optimal inclusion probabilities.
+        core_plus_tail: Hybrid deterministic + balanced sampling.
+        calibrate_weights: Post-stratification weight adjustment.
+
+    Examples:
+        >>> import pandas as pd
+        >>> import numpy as np
+        >>> from fewlab import pi_aopt_for_budget, balanced_fixed_size, _influence
+        >>>
+        >>> # Setup data
+        >>> counts = pd.DataFrame(np.random.poisson(5, (1000, 100)))
+        >>> X = pd.DataFrame(np.random.randn(1000, 3))
+        >>>
+        >>> # Compute probabilities and influence matrix
+        >>> pi = pi_aopt_for_budget(counts, X, budget=30)
+        >>> inf = _influence(counts, X)
+        >>>
+        >>> # Balanced sampling
+        >>> selected = balanced_fixed_size(pi, inf.g, budget=30, random_state=42)
+        >>> print(f"Selected {len(selected)} items with balanced design")
+
+    Notes:
+        The balancing algorithm aims to make sum_S (I_j/pi_j - 1) * g_j ≈ 0, where S is the
+        selected sample and I_j are selection indicators. This reduces variance in calibrated
+        estimators.
     """
-    m: int = len(pi)
-    if K <= 0 or K > m:
-        raise ValueError("K must be in [1, m]")
 
-    rng: np.random.Generator = np.random.default_rng(seed)
+    # Validate inputs
+    pi = validate_probability_series(pi)
+    if not isinstance(g, np.ndarray) or g.ndim != 2:
+        raise ValidationError(
+            "g must be a 2D numpy array", "Ensure g has shape (n_features, n_items)"
+        )
+
+    m: int = len(pi)
+    if g.shape[1] != m:
+        raise ValidationError(
+            f"g has {g.shape[1]} columns but pi has {m} items",
+            "Ensure g and pi represent the same items in the same order",
+        )
+
+    budget = validate_budget(budget, m)
+
+    rng: np.random.Generator = _get_random_generator(random_state)
     cols: pd.Index = pi.index
 
-    # 1) Initial K-draw proportional to pi
+    # 1) Initial budget-draw proportional to pi
     probs: np.ndarray = pi.to_numpy(float)
     probs = probs / probs.sum()
-    init: np.ndarray = rng.choice(m, size=K, replace=False, p=probs)
+    init: np.ndarray = rng.choice(m, size=budget, replace=False, p=probs)
     selected: np.ndarray = np.zeros(m, dtype=bool)
     selected[init] = True
 
