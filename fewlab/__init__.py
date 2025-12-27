@@ -28,7 +28,7 @@ from .results import (
 from .rowse import row_se_min_labels
 from .selection import topk
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 __all__ = [
     # Primary interface
