@@ -255,7 +255,6 @@ dependencies = [
 dev = [
     { name = "mypy" },
     { name = "pre-commit" },
-    { name = "pydoclint" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -288,7 +287,6 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.23" },
     { name = "pandas", specifier = ">=1.5" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0" },
-    { name = "pydoclint", marker = "extra == 'dev'", specifier = ">=0.6.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7.0" },
     { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=4.0" },
