@@ -261,7 +261,7 @@ class Design:
             budget: Expected total budget (sum of inclusion probabilities).
             pi_min: Minimum inclusion probability per item.
             method: Probability computation strategy, `"aopt"` or `"row_se"`.
-            **kwargs: Additional method-specific arguments (e.g., `eps2` for `"row_se"`).
+            \\*\\*kwargs: Additional method-specific arguments (e.g., `eps2` for `"row_se"`).
 
         Returns:
             Probability result with inclusion probabilities and diagnostics.
@@ -366,7 +366,7 @@ class Design:
         Args:
             budget: Expected total budget.
             pi_min: Minimum allowable inclusion probability.
-            **kwargs: Additional arguments; must include `eps2` (row-wise SE^2 constraints).
+            \\*\\*kwargs: Additional arguments; must include `eps2` (row-wise SE^2 constraints).
 
         Returns:
             Inclusion probabilities that satisfy the row-wise SE constraints.
@@ -406,7 +406,7 @@ class Design:
             budget: Number of items to sample.
             method: Sampling method (`"balanced"`, `"core_plus_tail"`, or `"adaptive"`).
             random_state: Random state for reproducible sampling. Can be None, int, or Generator.
-            **kwargs: Method-specific parameters (e.g., `tail_frac`, `pi_min`, tolerances).
+            \\*\\*kwargs: Method-specific parameters (e.g., `tail_frac`, `pi_min`, tolerances).
 
         Returns:
             Sampled item identifiers.
@@ -507,7 +507,7 @@ class Design:
             budget: Total sample size.
             tail_frac: Fraction allocated to the probabilistic tail.
             random_state: Random state for the tail sampling step. Can be None, int, or Generator.
-            **kwargs: Extra arguments forwarded to the balanced sampler.
+            \\*\\*kwargs: Extra arguments forwarded to the balanced sampler.
 
         Returns:
             Core+tail result with selected items, probabilities, weights, and diagnostics.
