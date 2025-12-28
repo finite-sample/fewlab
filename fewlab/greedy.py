@@ -1,15 +1,14 @@
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
-    from .results import SelectionResult
+    pass
 
 from .constants import SMALL_RIDGE
 from .core import _influence
+from .results import SelectionResult
 from .validation import (
     validate_budget,
     validate_counts_matrix,

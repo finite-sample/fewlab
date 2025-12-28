@@ -5,8 +5,6 @@ This module implements GREG (Generalized Regression) calibration and related
 techniques for adjusting sampling weights to match known population totals.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 import numpy as np
@@ -16,7 +14,7 @@ from .constants import DIVISION_EPS, SMALL_RIDGE
 from .utils import get_item_positions
 
 # Type alias for item selection types (Python 3.12+)
-type ItemSelection = Sequence[str] | pd.Index
+ItemSelection = Sequence[str] | pd.Index
 
 
 def calibrate_weights(

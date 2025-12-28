@@ -5,8 +5,6 @@ This module implements advanced sampling designs that combine the benefits of
 deterministic high-influence selection with balanced probabilistic sampling.
 """
 
-from __future__ import annotations
-
 import numpy as np
 import pandas as pd
 

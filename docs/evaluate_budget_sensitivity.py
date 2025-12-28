@@ -7,8 +7,6 @@ sampling changes as the budget (number of items to sample) increases.
 Key insight: Optimal methods should show larger gains with tighter budgets.
 """
 
-from __future__ import annotations
-
 import sys
 from dataclasses import dataclass
 from pathlib import Path

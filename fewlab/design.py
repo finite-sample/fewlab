@@ -6,8 +6,6 @@ replacing the functional API with a stateful design that caches expensive
 influence computations and provides comprehensive diagnostics.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -29,13 +27,15 @@ from .validation import (
 
 # Import result classes at the end to avoid circular imports
 if TYPE_CHECKING:
-    from .results import (
-        CoreTailResult,
-        EstimationResult,
-        ProbabilityResult,
-        SamplingResult,
-        SelectionResult,
-    )
+    pass
+
+from .results import (
+    CoreTailResult,
+    EstimationResult,
+    ProbabilityResult,
+    SamplingResult,
+    SelectionResult,
+)
 
 
 class Design:
@@ -57,6 +57,8 @@ class Design:
         >>> design.select(budget=20).shape[0]
         20
     """
+
+    _last_budget_violation: dict[str, Any] | None
 
     def __init__(
         self,
