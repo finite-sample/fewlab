@@ -5,8 +5,6 @@ This module provides typed, structured return values that replace loose tuples
 and dict-based returns with direct attribute access for better API consistency.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import Any
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -7,13 +5,14 @@ import numpy as np
 import pandas as pd
 
 if TYPE_CHECKING:
-    from .results import ProbabilityResult, SelectionResult
+    pass
 
 from .constants import (
     CONDITION_THRESHOLD,
     PI_MIN_DEFAULT,
     SMALL_RIDGE,
 )
+from .results import ProbabilityResult, SelectionResult
 
 
 @dataclass(slots=True)

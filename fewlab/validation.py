@@ -5,8 +5,6 @@ This module provides comprehensive validation for function parameters,
 data alignment checks, and helpful error messages with suggestions.
 """
 
-from __future__ import annotations
-
 import warnings
 from typing import Any
 

@@ -5,6 +5,7 @@ Main API functions:
 - items_to_label: Deterministic A-optimal selection
 - pi_aopt_for_budget: A-optimal inclusion probabilities
 - balanced_fixed_size: Balanced sampling with fixed size
+- scale_pi_to_budget: The inclusion probabilities that sampler delivers
 - row_se_min_labels: Row-wise SE minimization
 - calibrate_weights: GREG-style weight calibration
 - core_plus_tail: Hybrid deterministic core + balanced tail
@@ -16,6 +17,7 @@ from importlib.metadata import version
 from .balanced import balanced_fixed_size
 from .calibration import calibrate_weights, calibrated_ht_estimator
 from .core import items_to_label, pi_aopt_for_budget
+from .cube import scale_pi_to_budget
 from .design import Design
 from .greedy import greedy_aopt_selection
 from .hybrid import adaptive_core_tail, core_plus_tail
@@ -39,6 +41,7 @@ __all__ = [
     "items_to_label",
     "pi_aopt_for_budget",
     "balanced_fixed_size",
+    "scale_pi_to_budget",
     "row_se_min_labels",
     "topk",
     "calibrate_weights",

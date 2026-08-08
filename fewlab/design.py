@@ -6,8 +6,6 @@ replacing the functional API with a stateful design that caches expensive
 influence computations and provides comprehensive diagnostics.
 """
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -29,13 +27,15 @@ from .validation import (
 
 # Import result classes at the end to avoid circular imports
 if TYPE_CHECKING:
-    from .results import (
-        CoreTailResult,
-        EstimationResult,
-        ProbabilityResult,
-        SamplingResult,
-        SelectionResult,
-    )
+    pass
+
+from .results import (
+    CoreTailResult,
+    EstimationResult,
+    ProbabilityResult,
+    SamplingResult,
+    SelectionResult,
+)
 
 
 class Design:
@@ -57,6 +57,8 @@ class Design:
         >>> design.select(budget=20).shape[0]
         20
     """
+
+    _last_budget_violation: dict[str, Any] | None
 
     def __init__(
         self,
@@ -465,6 +467,7 @@ class Design:
     ) -> SamplingResult:
         """Balanced fixed-size sampling."""
         from .balanced import balanced_fixed_size
+        from .cube import scale_pi_to_budget
         from .results import SamplingResult
         from .utils import compute_horvitz_thompson_weights
 
@@ -476,6 +479,17 @@ class Design:
             pi, self._influence.g, budget, random_state=random_state, **kwargs
         )
         sample.name = "sampled_items"
+
+        # Report the probabilities the sampler delivers rather than the ones it
+        # was asked for. `pi_aopt_for_budget` hits the budget to a solver
+        # tolerance, not exactly, and the fixed-size design realises the
+        # rescaled vector. The gap is small; it is also the gap between weights
+        # that are right and weights that are nearly right.
+        pi = pd.Series(
+            scale_pi_to_budget(pi.to_numpy(float), budget),
+            index=pi.index,
+            name=pi.name,
+        )
 
         # Compute suggested weights for sampled items
         weights = compute_horvitz_thompson_weights(pi, sample)

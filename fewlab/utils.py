@@ -5,8 +5,6 @@ This module provides shared helper functions to reduce code duplication
 across the library.
 """
 
-from __future__ import annotations
-
 from collections.abc import Sequence
 
 import numpy as np

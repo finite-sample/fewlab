@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "fewlab"
-version = "1.1.1"
+version = "2.0.0"
 description = "Pick the fewest items to label for unbiased OLS on shares"
 readme = "README.md"
 requires-python = ">=3.12,<3.15"
@@ -61,6 +61,9 @@ dev = [
 test = [
     "pytest>=9.0.1",
     "pytest-cov>=7.0.0",
+    # A git reference, so it stays in dependency-groups and out of the published
+    # extras: PyPI rejects direct URL references in project metadata.
+    "simcheck @ git+https://github.com/finite-sample/simcheck",
 ]
 
 # uv build backend configuration
