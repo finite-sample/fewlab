@@ -11,6 +11,7 @@ import pandas as pd
 from .balanced import balanced_fixed_size
 from .constants import DIVISION_EPS
 from .core import _influence, items_to_label, pi_aopt_for_budget
+from .cube import scale_pi_to_budget
 from .results import CoreTailResult
 from .utils import (
     compute_horvitz_thompson_weights,
@@ -108,6 +109,14 @@ def core_plus_tail(
 
     # Step 3: Balanced selection from remainder
     remainder = pi.index.difference(core)
+
+    # The design that actually runs is not `pi`. Core items are chosen
+    # deterministically, so they are included with probability one, and the tail
+    # is drawn from the remainder to a budget of its own. Weighting core items by
+    # `1 / pi_j < 1` -- as this did -- inflates their contribution by exactly the
+    # factor by which their selection was never random.
+    pi_design = pd.Series(1.0, index=pi.index, name=pi.name)
+
     if len(remainder) < budget_tail:
         # Edge case: not enough items left, take all remainder
         tail = remainder
@@ -132,16 +141,21 @@ def core_plus_tail(
             random_state=random_state,
         )
         selected = core.union(tail)
+        pi_design.loc[remainder] = scale_pi_to_budget(
+            pi_remainder.to_numpy(float), budget_tail
+        )
 
     selected.name = "selected_items"
 
     # Compute suggested weights
-    weights_ht = compute_horvitz_thompson_weights(pi, selected)
+    weights_ht = compute_horvitz_thompson_weights(pi_design, selected)
 
-    # Alternative "tiny-bias" weights: 1/pi for core, 1.0 for tail
+    # Alternative "tiny-bias" weights: 1.0 for core (which is exact, since core
+    # items are certainties) and 1.0 for tail (which is the intentional bias
+    # traded for variance reduction).
     weights_mixed = pd.Series(index=selected, dtype=float)
-    weights_mixed.loc[core] = (1.0 / pi).reindex(core)
-    weights_mixed.loc[tail] = 1.0  # Intentional bias for variance reduction
+    weights_mixed.loc[core] = 1.0
+    weights_mixed.loc[tail] = 1.0
 
     diagnostics = {
         "budget_core": budget_core,
@@ -151,7 +165,7 @@ def core_plus_tail(
 
     return CoreTailResult(
         selected=selected,
-        probabilities=pi,
+        probabilities=pi_design,
         core=core,
         tail=tail,
         ht_weights=weights_ht,
