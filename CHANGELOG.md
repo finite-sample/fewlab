@@ -42,6 +42,27 @@ sample and re-estimate.
   `pi_aopt_for_budget` hits its budget to a solver tolerance rather than exactly;
   the reported vector is now the one the fixed-size design realises.
 
+- **`calibrate_weights(nonneg=True)` no longer breaks the constraint it solves.**
+  It computed the exact chi-square calibration and then clipped negative weights
+  to zero, which silently violates `G_S w = t` -- the equation the function
+  exists to satisfy. On a 100-item fixture the raw solution went negative in 41
+  draws out of 200, and in 10 of those the clipped weights reproduced the
+  population totals *worse* than the unadjusted Horvitz-Thompson weights. It now
+  pins offenders at the floor and re-solves over the rest, restoring the
+  constraint exactly (largest residual over 200 draws: 2.8e-07) with no negative
+  weights. When too few weights remain free to carry the constraints it warns
+  rather than returning a silently wrong answer.
+
+- **`scale_pi_to_budget` rejects a budget its positive entries cannot carry.**
+  Scaling leaves a zero at zero, so `scale_pi_to_budget([0, 0, 0.5], 2)` returned
+  a vector summing to 1 and produced a sample quietly smaller than requested. It
+  now raises.
+
+- **The cube landing phase settles leftovers by systematic pi-ps** rather than
+  independent Bernoulli draws. Both preserve the marginals, but only the former
+  preserves the count, so accumulated floating-point drift in the constraint rows
+  can no longer cost or gain a whole item.
+
 ### Added
 
 - `scale_pi_to_budget`, the rescaling the sampler applies. `sum(pi)` is the

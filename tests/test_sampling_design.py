@@ -37,7 +37,12 @@ import pandas as pd
 import pytest
 from simcheck import Estimate, assert_proportion, assert_unbiased, monte_carlo, reps_for
 
-from fewlab import balanced_fixed_size, calibrated_ht_estimator, core_plus_tail
+from fewlab import (
+    balanced_fixed_size,
+    calibrated_ht_estimator,
+    core_plus_tail,
+    scale_pi_to_budget,
+)
 from fewlab.core import _influence, pi_aopt_for_budget
 
 from .data_synth import make_synth
@@ -54,19 +59,31 @@ CERTAINTY = 1.0 - 1e-9
 def _design(
     seed: int = 7,
 ) -> tuple[pd.DataFrame, pd.Series, np.ndarray]:
-    """Build one fixed design: counts, A-optimal probabilities, and projections.
+    """Build one fixed design: counts, delivered probabilities, and projections.
+
+    The probabilities returned are the ones the sampler *delivers*, which is
+    ``scale_pi_to_budget`` of the A-optimal vector rather than that vector
+    itself. The two differ only by however far ``pi_aopt_for_budget``'s solver
+    lands from the budget, but asserting against the requested vector would be
+    checking a target the sampler never promised, and would leave the gates
+    passing for a reason unrelated to whether the design is right.
 
     Args:
         seed: Seed for the synthetic data generator.
 
     Returns:
-        tuple: The count matrix, the inclusion probabilities indexed by item, and
-        the influence projections ``g`` in the same item order.
+        tuple: The count matrix, the delivered inclusion probabilities indexed by
+        item, and the influence projections ``g`` in the same item order.
     """
     counts, X = make_synth(n=N_UNITS, m=N_ITEMS, p=N_FEATURES, random_state=seed)
     influence = _influence(counts, X)
-    pi = pi_aopt_for_budget(counts, X, BUDGET).probabilities.reindex(influence.cols)
-    return counts, pi, influence.g
+    requested = pi_aopt_for_budget(counts, X, BUDGET).probabilities.reindex(
+        influence.cols
+    )
+    delivered = pd.Series(
+        scale_pi_to_budget(requested.to_numpy(float), BUDGET), index=requested.index
+    )
+    return counts, delivered, influence.g
 
 
 def _inclusion_rates(
@@ -160,10 +177,12 @@ def test_the_stated_probabilities_sum_to_the_budget():
 
     ``sum(pi)`` is the expected sample size. If it did not equal the budget, no
     sampler could achieve both the stated probabilities and the fixed size, and
-    the two tests above would be asserting contradictory things.
+    the two tests above would be asserting contradictory things. It holds to
+    floating point rather than to a solver tolerance because these are the
+    delivered probabilities, which are rescaled to the budget by construction.
     """
     _, pi, _ = _design()
-    assert float(pi.sum()) == pytest.approx(BUDGET, abs=1e-6)
+    assert float(pi.sum()) == pytest.approx(BUDGET, abs=1e-9)
 
 
 # --------------------------------------------------------------------------

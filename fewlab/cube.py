@@ -77,8 +77,8 @@ def scale_pi_to_budget(
         np.ndarray: Probabilities in ``[0, 1]`` summing to ``budget``.
 
     Raises:
-        ValueError: If ``budget`` is negative or exceeds the number of items, or
-            if ``pi`` has no positive entry to carry the budget.
+        ValueError: If ``budget`` is negative, exceeds the number of items, or
+            exceeds the number of items with positive probability.
 
     Examples:
     >>> import numpy as np
@@ -96,8 +96,18 @@ def scale_pi_to_budget(
         return np.zeros(n_items)
     if budget == n_items:
         return np.ones(n_items)
-    if not (values > 0).any():
-        raise ValueError("pi must have at least one positive entry")
+
+    # An item with zero probability is never selected, and scaling leaves it at
+    # zero, so the budget has to fit inside the items that can actually carry it.
+    # Without this the redistribution loop runs out of free mass and returns a
+    # vector summing to less than the budget, which then yields a sample quietly
+    # smaller than the one asked for.
+    selectable = int((values > 0).sum())
+    if budget > selectable:
+        raise ValueError(
+            f"budget {budget} exceeds the {selectable} items with positive "
+            "probability; items with zero probability can never be selected"
+        )
 
     scaled = np.clip(values, 0.0, 1.0)
     pinned = np.zeros(n_items, dtype=bool)
@@ -223,6 +233,36 @@ def _flight_phase(
             return
 
 
+def _systematic_pps(pi: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """Select with exact probabilities ``pi`` and a count of ``round(sum(pi))``.
+
+    Systematic pi-ps (Madow 1949): lay the probabilities end to end, then take
+    every point one unit apart from a uniform random start. An item is selected
+    when a point lands in its interval, which happens with probability equal to
+    its length, and the number of points landing in a run of total length ``S``
+    is ``S`` when ``S`` is an integer -- so the marginals and the total both come
+    out right. The order is randomised so the result does not depend on how the
+    caller happened to arrange the items.
+
+    Args:
+        pi: Probabilities, each in ``[0, 1]``.
+        rng: Source of randomness.
+
+    Returns:
+        np.ndarray: Zeros and ones, one per input probability.
+    """
+    order = rng.permutation(pi.size)
+    cumulative = np.cumsum(pi[order])
+    preceding = np.concatenate(([0.0], cumulative[:-1]))
+
+    start = rng.random()
+    hit = np.floor(cumulative - start) > np.floor(preceding - start)
+
+    selected = np.zeros(pi.size)
+    selected[order[hit]] = 1.0
+    return selected
+
+
 def cube_sample(
     pi: np.ndarray, constraints: np.ndarray, rng: np.random.Generator
 ) -> np.ndarray:
@@ -255,12 +295,17 @@ def cube_sample(
         if _unsettled(state).size == 0:
             break
 
-    # Reached only when the probabilities did not sum to an integer, so no
-    # fixed-size design existed to begin with. Settling independently keeps the
-    # inclusion probabilities exact and lets the size vary by one.
+    # Normally nothing is left: the sample-size row survives to the end, so once
+    # every other coordinate has landed the last one is forced to an integer.
+    # Two things can still leave a straggler -- probabilities that did not sum to
+    # an integer, so no fixed-size design existed at all, and accumulated
+    # floating-point drift in the preserved rows over many steps.
+    #
+    # Settling them independently would handle the first case but not the second,
+    # because drift of a few ulps would then cost or gain a whole item at random.
+    # Systematic pi-ps settles them jointly: it keeps each marginal exactly, and
+    # its count is the total rounded rather than a coin flip per coordinate.
     stragglers = _unsettled(state)
     if stragglers.size:
-        state[stragglers] = (rng.random(stragglers.size) < state[stragglers]).astype(
-            float
-        )
+        state[stragglers] = _systematic_pps(state[stragglers], rng)
     return state > 0.5
