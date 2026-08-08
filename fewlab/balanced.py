@@ -3,13 +3,8 @@ from typing import cast
 import numpy as np
 import pandas as pd
 
-from .constants import (
-    DIVISION_EPS,
-    MAX_SWAPS_BALANCED,
-    SEARCH_LIMIT_BALANCED,
-    TOLERANCE_DEFAULT,
-    TOLERANCE_STRICT,
-)
+from .constants import DIVISION_EPS
+from .cube import cube_sample, scale_pi_to_budget
 from .utils import _get_random_generator
 from .validation import (
     ValidationError,
@@ -24,27 +19,29 @@ def balanced_fixed_size(
     budget: int,
     *,
     random_state: None | int | np.random.Generator = None,
-    max_swaps: int = MAX_SWAPS_BALANCED,
-    tol: float = TOLERANCE_DEFAULT,
 ) -> pd.Index:
     """
-    Fixed-size balanced sampling with variance reduction.
+    Fixed-size balanced sampling with exact inclusion probabilities.
 
-    Implements a two-step heuristic:
+    Draws exactly `budget` items by the cube method, so that three things hold at
+    once: item j is included with probability exactly `pi_delivered[j]`, the sample
+    size never varies, and the calibration residual `sum_S (I_j/pi_j - 1) g_j` is
+    driven to zero as far as the first two allow. The balance is what reduces the
+    variance of Horvitz-Thompson estimators; the exact probabilities are what make
+    them unbiased in the first place.
 
-    1. Initial selection proportional to inclusion probabilities pi
-    2. Greedy local search to minimize calibration residual ||sum((I/pi)-1) g||_2
-
-    This balancing procedure aims to reduce the variance of Horvitz-Thompson estimators by
-    making the sample more representative.
+    The delivered probabilities are `scale_pi_to_budget(pi, budget)` rather than
+    `pi` itself, because `sum(pi)` is the expected sample size and a fixed-size
+    design of `budget` items is incoherent unless the probabilities sum to
+    `budget`. When they already do -- as they do for `pi_aopt_for_budget(...,
+    budget)` -- the rescaling is a no-op. **Weight by the delivered probabilities,
+    not by the input**, or call `Design.sample`, which reports them.
 
     Args:
         pi: Inclusion probabilities for items. Index contains item identifiers.
         g: Regression projections g_j = X^T v_j for each item j (shape (p, m)).
         budget: Fixed sample size (number of items to select).
         random_state: Random state for reproducible sampling. Can be None, int, or Generator.
-        max_swaps: Maximum number of swap iterations for balancing.
-        tol: Tolerance for stopping criterion (residual norm).
 
     Returns:
         Index of selected items. Length equals `budget`.
@@ -53,6 +50,7 @@ def balanced_fixed_size(
         ValidationError: If `pi`, `g`, or `budget` fail validation checks.
 
     See Also:
+        scale_pi_to_budget: The probabilities this sampler actually delivers.
         pi_aopt_for_budget: Compute optimal inclusion probabilities.
         core_plus_tail: Hybrid deterministic + balanced sampling.
         calibrate_weights: Post-stratification weight adjustment.
@@ -75,9 +73,11 @@ def balanced_fixed_size(
         >>> print(f"Selected {len(selected)} items with balanced design")
 
     Notes:
-        The balancing algorithm aims to make sum_S (I_j/pi_j - 1) * g_j ≈ 0, where S is the
-        selected sample and I_j are selection indicators. This reduces variance in calibrated
-        estimators.
+        Earlier releases drew the sample proportional to `pi` without replacement
+        and then swapped items greedily to improve balance. Neither step preserves
+        `pi`: on the package's own test fixture, items with `pi == 1` were included
+        75% of the time before the swaps and 45% after, which biased every
+        estimator weighted by `1 / pi`.
     """
 
     # Validate inputs
@@ -99,57 +99,15 @@ def balanced_fixed_size(
     rng: np.random.Generator = _get_random_generator(random_state)
     cols: pd.Index = pi.index
 
-    # 1) Initial budget-draw proportional to pi
-    probs: np.ndarray = pi.to_numpy(float)
-    probs = probs / probs.sum()
-    init: np.ndarray = rng.choice(m, size=budget, replace=False, p=probs)
-    selected: np.ndarray = np.zeros(m, dtype=bool)
-    selected[init] = True
+    target: np.ndarray = scale_pi_to_budget(pi.to_numpy(float), budget)
+    inv_pi: np.ndarray = 1.0 / np.maximum(target, DIVISION_EPS)
 
-    inv_pi: np.ndarray = 1.0 / (pi.to_numpy(float) + DIVISION_EPS)
-    # current residual R = sum((I/pi)-1) g
-    coeff: np.ndarray = selected * inv_pi - 1.0
-    R: np.ndarray = g @ coeff  # (p,)
+    # Rows the cube walk must preserve. Balancing on g/pi is what forces
+    # sum_S (I_j/pi_j - 1) g_j to zero; the row of ones is the fixed-size
+    # constraint, sum_j I_j = sum_j pi_j = budget. Order matters: the walk drops
+    # rows from the top when it can no longer move, so the sample-size
+    # constraint goes last and is the one never given up.
+    constraints: np.ndarray = np.vstack([g * inv_pi[None, :], np.ones(m)])
 
-    # 2) Greedy local search: try swaps that reduce ||R||_2
-    # Precompute convenience arrays
-    in_idx: np.ndarray = np.flatnonzero(selected)
-    out_idx: np.ndarray = np.flatnonzero(~selected)
-
-    def norm2(x: np.ndarray) -> float:
-        return float(np.dot(x, x))
-
-    improved: bool = True
-    nswaps: int = 0
-    best_norm: float = norm2(R)
-
-    while improved and nswaps < max_swaps:
-        improved = False
-        # try a random subset of candidates to keep O(max_swaps) bounded
-        rng.shuffle(in_idx)
-        rng.shuffle(out_idx)
-        tried: int = 0
-        for j_in in in_idx[: min(len(in_idx), SEARCH_LIMIT_BALANCED)]:
-            for j_out in out_idx[: min(len(out_idx), SEARCH_LIMIT_BALANCED)]:
-                tried += 1
-                # delta R = g(:,j_out)*(1/pi_out) - g(:,j_in)*(1/pi_in)
-                dR: np.ndarray = g[:, j_out] * inv_pi[j_out] - g[:, j_in] * inv_pi[j_in]
-                new_norm: float = norm2(R + dR)
-                if new_norm + TOLERANCE_STRICT < best_norm:
-                    # commit swap
-                    selected[j_in] = False
-                    selected[j_out] = True
-                    R = R + dR
-                    best_norm = new_norm
-                    # update candidate lists
-                    in_idx = np.flatnonzero(selected)
-                    out_idx = np.flatnonzero(~selected)
-                    improved = True
-                    nswaps += 1
-                    break
-            if improved:
-                break
-        if best_norm < tol:
-            break
-
+    selected: np.ndarray = cube_sample(target, constraints, rng)
     return cast(pd.Index, cols[selected])

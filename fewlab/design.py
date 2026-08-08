@@ -467,6 +467,7 @@ class Design:
     ) -> SamplingResult:
         """Balanced fixed-size sampling."""
         from .balanced import balanced_fixed_size
+        from .cube import scale_pi_to_budget
         from .results import SamplingResult
         from .utils import compute_horvitz_thompson_weights
 
@@ -478,6 +479,17 @@ class Design:
             pi, self._influence.g, budget, random_state=random_state, **kwargs
         )
         sample.name = "sampled_items"
+
+        # Report the probabilities the sampler delivers rather than the ones it
+        # was asked for. `pi_aopt_for_budget` hits the budget to a solver
+        # tolerance, not exactly, and the fixed-size design realises the
+        # rescaled vector. The gap is small; it is also the gap between weights
+        # that are right and weights that are nearly right.
+        pi = pd.Series(
+            scale_pi_to_budget(pi.to_numpy(float), budget),
+            index=pi.index,
+            name=pi.name,
+        )
 
         # Compute suggested weights for sampled items
         weights = compute_horvitz_thompson_weights(pi, sample)
