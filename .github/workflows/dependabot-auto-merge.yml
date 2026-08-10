@@ -36,6 +36,12 @@ env:
   # loud. Silence is the failure mode this workflow exists to fix, so a sweep
   # that quietly does nothing must still leave a mark.
   STALE_AFTER_HOURS: 12
+  # Neither job checks out the repo, so gh has no git remote to infer from.
+  # Steps that pass a PR URL resolve the repo from the argument; `gh label
+  # create` takes no URL, so it fell back to git and exited 1 -- on every
+  # eligible PR the fleet ever saw. Set once here rather than per step: the
+  # next gh call added to either job is then correct by default.
+  GH_REPO: ${{ github.repository }}
 
 jobs:
   classify:
