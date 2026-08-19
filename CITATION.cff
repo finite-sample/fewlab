@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "fewlab: fewest items to label for most efficient unbiased OLS on shares"
-version: 0.1.0
-date-released: 2024-12-01
+version: 2.0.0
+date-released: 2026-08-07
 url: "https://github.com/finite-sample/fewlab"
 repository-code: "https://github.com/finite-sample/fewlab"
 authors:

@@ -383,7 +383,7 @@ class TestDesignEdgeCases:
         design = Design(counts, X)
 
         # Budget too large
-        with pytest.raises(ValidationError, match="budget .* exceeds"):
+        with pytest.raises(ValidationError, match=r"budget .* exceeds"):
             design.select(budget=1000)  # More items than available
 
         # Negative budget

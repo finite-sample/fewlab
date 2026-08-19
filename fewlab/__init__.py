@@ -1,5 +1,4 @@
-"""
-Fewlab: Optimal item selection for efficient labeling and survey sampling.
+"""Fewlab: Optimal item selection for efficient labeling and survey sampling.
 
 Main API functions:
 - items_to_label: Deterministic A-optimal selection
@@ -35,24 +34,22 @@ from .selection import topk
 __version__ = version("fewlab")
 
 __all__ = [
-    # Primary interface
+    "CoreTailResult",
     "Design",
-    # Core methods
-    "items_to_label",
-    "pi_aopt_for_budget",
+    "EstimationResult",
+    "ProbabilityResult",
+    "RowSEResult",
+    "SamplingResult",
+    "SelectionResult",
+    "adaptive_core_tail",
     "balanced_fixed_size",
-    "scale_pi_to_budget",
-    "row_se_min_labels",
-    "topk",
     "calibrate_weights",
     "calibrated_ht_estimator",
     "core_plus_tail",
-    "adaptive_core_tail",
     "greedy_aopt_selection",
-    "CoreTailResult",
-    "SamplingResult",
-    "SelectionResult",
-    "ProbabilityResult",
-    "EstimationResult",
-    "RowSEResult",
+    "items_to_label",
+    "pi_aopt_for_budget",
+    "row_se_min_labels",
+    "scale_pi_to_budget",
+    "topk",
 ]

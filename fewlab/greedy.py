@@ -1,10 +1,12 @@
-from typing import TYPE_CHECKING
+"""Greedy sequential A-optimal item selection.
+
+Picks items one at a time, each time taking the item that most reduces the
+trace of the coefficient covariance, using a rank-one update of the
+information matrix rather than a refit.
+"""
 
 import numpy as np
 import pandas as pd
-
-if TYPE_CHECKING:
-    pass
 
 from .constants import SMALL_RIDGE
 from .core import _influence
@@ -25,17 +27,18 @@ def greedy_aopt_selection(
     ensure_full_rank: bool = True,
     ridge: float | None = None,
 ) -> SelectionResult:
-    """
-    Select items using greedy A-optimal sequential selection.
+    """Select items using greedy A-optimal sequential selection.
 
-    The algorithm iteratively chooses the item that maximally reduces the trace of the covariance
+    The algorithm iteratively chooses the item that maximally reduces the trace of
+    the covariance
     matrix using Sherman-Morrison updates.
 
     Args:
         counts: Count matrix with non-negative entries.
         X: Feature matrix aligned with `counts.index`.
         budget: Number of items to select sequentially.
-        ensure_full_rank: Whether to add a ridge if the information matrix becomes singular.
+        ensure_full_rank: Whether to add a ridge if the information matrix becomes
+            singular.
         ridge: Optional explicit ridge parameter.
 
     Returns:
@@ -56,7 +59,6 @@ def greedy_aopt_selection(
         >>> len(result.selected)
         20
     """
-
     # Validate inputs
     counts = validate_counts_matrix(counts)
     X = validate_features_matrix(X)
@@ -93,17 +95,20 @@ def greedy_aopt_selection(
     # That `w_j` is the leverage of item j *assuming* we have the full population X.
     # The goal of `items_to_label` is to pick items that give us the best estimate
     # of the regression coefficients *if we only had those items*.
-    # Actually, the problem description says: "prioritizes items that... would most change your conclusions".
+    # Actually, the problem description says: "prioritizes items that... would
+    # most change your conclusions".
     # The standard "sensor selection" or "experimental design" greedy approach:
     # Start with M = epsilon * I (or prior).
     # At each step, pick j to maximize: g_j' M^{-1} g_j / (1 + g_j' M^{-1} g_j) ?
-    # Or if we are minimizing Trace(M^{-1}), the reduction is proportional to that quantity.
+    # Or if we are minimizing Trace(M^{-1}), the reduction is proportional to that
+    # quantity.
 
     # Let's stick to the standard greedy A-opt update:
     # M_{k+1} = M_k + g_j g_j^T
     # We want to pick j to minimize Trace(M_{k+1}^{-1}).
     # Using Sherman-Morrison:
-    # Trace(M_{k+1}^{-1}) = Trace(M_k^{-1}) - (g_j^T M_k^{-2} g_j) / (1 + g_j^T M_k^{-1} g_j)
+    # Trace(M_{k+1}^{-1}) = Trace(M_k^{-1})
+    #                       - (g_j^T M_k^{-2} g_j) / (1 + g_j^T M_k^{-1} g_j)
     # So we want to MAXIMIZE: (g_j^T M_k^{-2} g_j) / (1 + g_j^T M_k^{-1} g_j)
 
     # Initial M = X^T X (from the full population? No, that's not right.)
@@ -144,12 +149,12 @@ def greedy_aopt_selection(
         U = M_inv @ G_cand  # (p, m_rem)
 
         # Numerator: sum(U**2, axis=0) -> (m_rem,)
-        numer = np.sum(U**2, axis=0)
+        numerator = np.sum(U**2, axis=0)
 
         # Denominator: 1 + sum(G_cand * U, axis=0)
         denom = 1.0 + np.sum(G_cand * U, axis=0)
 
-        scores = numer / denom
+        scores = numerator / denom
 
         best_idx_in_cand = np.argmax(scores)
         best_j = cand_list[best_idx_in_cand]

@@ -1,5 +1,4 @@
-"""
-Hybrid sampling strategies combining deterministic and probabilistic selection.
+"""Hybrid sampling strategies combining deterministic and probabilistic selection.
 
 This module implements advanced sampling designs that combine the benefits of
 deterministic high-influence selection with balanced probabilistic sampling.
@@ -33,15 +32,15 @@ def core_plus_tail(
     budget: int,
     *,
     tail_frac: float = 0.2,
-    random_state: None | int | np.random.Generator = None,
+    random_state: int | np.random.Generator | None = None,
     ensure_full_rank: bool = True,
     ridge: float | None = None,
 ) -> CoreTailResult:
-    """
-    Hybrid sampler combining a deterministic core with a balanced probabilistic tail.
+    """Hybrid sampler combining a deterministic core with a balanced probabilistic tail.
 
     Strategy:
-        1. Select `budget_core = (1 - tail_frac) * budget` items deterministically (largest `w_j`).
+        1. Select `budget_core = (1 - tail_frac) * budget` items
+           deterministically (largest `w_j`).
         2. Compute A-optimal inclusion probabilities for the full budget.
         3. Draw the remaining `budget_tail` items using balanced sampling.
 
@@ -50,12 +49,14 @@ def core_plus_tail(
         X: Feature matrix aligned with `counts.index`.
         budget: Total number of items to select.
         tail_frac: Fraction of the budget allocated to the probabilistic tail.
-        random_state: Random state for balanced tail selection. Can be None, int, or Generator.
+        random_state: Random state for balanced tail selection. Accepts None, an
+            int seed, or a numpy Generator.
         ensure_full_rank: Whether to regularize `X^T X` if it is rank-deficient.
         ridge: Optional ridge penalty added to `X^T X`.
 
     Returns:
-        Selection result containing the chosen items, inclusion probabilities, and metadata.
+        Selection result containing the chosen items, inclusion probabilities, and
+        metadata.
 
     Raises:
         ValidationError: If inputs fail validation or the core/tail split is infeasible.
@@ -182,12 +183,12 @@ def adaptive_core_tail(
     min_tail_frac: float = 0.1,
     max_tail_frac: float = 0.4,
     condition_threshold: float = 1e6,
-    random_state: None | int | np.random.Generator = None,
+    random_state: int | np.random.Generator | None = None,
 ) -> CoreTailResult:
-    """
-    Adaptive core+tail selection with a data-driven tail fraction.
+    """Adaptive core+tail selection with a data-driven tail fraction.
 
-    The routine increases the tail fraction when `X^T X` is poorly conditioned and decreases it
+    The routine increases the tail fraction when `X^T X` is poorly conditioned and
+    decreases it
     when influence weights are highly concentrated.
 
     Args:
@@ -197,10 +198,12 @@ def adaptive_core_tail(
         min_tail_frac: Minimum allowable tail fraction.
         max_tail_frac: Maximum allowable tail fraction.
         condition_threshold: Baseline condition number scale.
-        random_state: Random state for the balanced sampling step. Can be None, int, or Generator.
+        random_state: Random state for the balanced sampling step. Accepts None,
+            an int seed, or a numpy Generator.
 
     Returns:
-        Selection result identical to `core_plus_tail`, with adaptive metadata in `info`.
+        Selection result identical to `core_plus_tail`, with adaptive metadata in
+        `info`.
     """
     # Validate inputs
     counts = validate_counts_matrix(counts)

@@ -35,7 +35,7 @@ import pandas as pd
 
 # Your data: user features and item usage
 user_features = pd.DataFrame(...)  # User characteristics
-item_usage = pd.DataFrame(...)     # Usage counts per user-item
+item_usage = pd.DataFrame(...)  # Usage counts per user-item
 
 # Create design (caches expensive computations)
 design = Design(item_usage, user_features)

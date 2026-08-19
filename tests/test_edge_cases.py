@@ -229,7 +229,7 @@ class TestNumericalStability:
 
         estimate = calibrated_ht_estimator(counts, labels, weights)
         assert np.isfinite(estimate).all()
-        assert all(0 <= estimate) & all(estimate <= 1)
+        assert all(estimate >= 0) & all(estimate <= 1)
 
     def test_very_small_counts(self):
         """Test with very small (near-zero) count values."""

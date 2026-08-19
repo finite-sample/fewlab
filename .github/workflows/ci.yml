@@ -2,64 +2,25 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+  schedule:
+    - cron: "17 6 * * 1"  # weekly: surface ecosystem drift on quiet repos
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.12", "3.13", "3.14"]
-
-    steps:
-    - uses: actions/checkout@v7
-
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v7
-      with:
-        python-version: ${{ matrix.python-version }}
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v9.0.0
-      with:
-        version: "latest"
-
-    - name: Install dependencies
-      run: |
-        uv sync --all-groups
-
-    - name: Validate pre-commit config
-      run: |
-        uv run pre-commit --version
-        uv run pre-commit run --all-files --show-diff-on-failure
-
-    - name: Test with pytest
-      run: |
-        uv run pytest tests/ -v
-
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v7
-
-    - name: Set up Python
-      uses: actions/setup-python@v7
-      with:
-        python-version: "3.14"
-
-    - name: Install uv
-      uses: astral-sh/setup-uv@v9.0.0
-      with:
-        version: "latest"
-
-    - name: Build package
-      run: uv build
-
-    - name: Check build artifacts
-      run: |
-        ls -la dist/
-        uv pip install --system dist/*.whl
-        python -c "import fewlab; print('Package installed successfully')"
+  ci:
+    uses: gojiplus/py-canon/.github/workflows/reusable-ci.yml@v1
+    with:
+      # The reusable workflow defaults to ["3.11", "3.14"], and this package's
+      # requires-python floor is 3.12 -- a 3.11 leg cannot even resolve.
+      python-versions: '["3.12", "3.13", "3.14"]'
+      wheel-import: fewlab
+      coverage-floor: 82
+      run-preen: true

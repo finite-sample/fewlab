@@ -1,3 +1,9 @@
+"""Inclusion probabilities under row-wise standard-error constraints.
+
+Instead of fixing a budget and minimising variance, this module fixes a
+per-row variance ceiling and minimises the expected number of labels.
+"""
+
 import warnings
 
 import numpy as np
@@ -26,12 +32,11 @@ def row_se_min_labels(
     pi_min: float = PI_MIN_DEFAULT,
     max_iter: int = MAX_ITER_ROWSE,
     tol: float = TOLERANCE_DEFAULT,
-    random_state: None | int | np.random.Generator = None,
+    random_state: int | np.random.Generator | None = None,
     return_result: bool = False,
     raise_on_failure: bool = False,
 ) -> RowSEResult | pd.Series:
-    """
-    Compute inclusion probabilities that minimize total expected labels under row-wise SE limits.
+    """Minimize expected labels subject to row-wise SE limits.
 
     The routine solves:
 
@@ -46,16 +51,19 @@ def row_se_min_labels(
         pi_min: Minimum allowable inclusion probability.
         max_iter: Maximum optimization iterations.
         tol: Convergence tolerance for constraint violations.
-        random_state: Random state for the stochastic subgradient steps. Can be None, int, or Generator.
+        random_state: Random state for the stochastic subgradient steps. Accepts
+            None, an int seed, or a numpy Generator.
         return_result: If True, return a `RowSEResult` with diagnostics.
-        raise_on_failure: If True, raise a `ValidationError` when constraints remain violated.
+        raise_on_failure: If True, raise a `ValidationError` when constraints
+            remain violated.
 
     Returns:
         Probability series if `return_result` is False (default) or a `RowSEResult` with
         diagnostics when `return_result` is True.
 
     Raises:
-        ValidationError: If inputs are invalid or `raise_on_failure` is True and the constraints
+        ValidationError: If inputs are invalid or `raise_on_failure` is True and
+            the constraints
             remain violated after optimization.
 
     See Also:
@@ -63,13 +71,14 @@ def row_se_min_labels(
         items_to_label: Deterministic selection without SE constraints.
 
     Examples:
-        >>> import pandas as pd
         >>> import numpy as np
+        >>> import pandas as pd
         >>> from fewlab import row_se_min_labels
-        >>>
-        >>> counts = pd.DataFrame(np.random.poisson(10, (500, 50)))
-        >>> pi = row_se_min_labels(counts, eps2=0.05**2)
-        >>> float(pi.sum())
+        >>> rng = np.random.default_rng(0)
+        >>> counts = pd.DataFrame(rng.poisson(10, (200, 20)))
+        >>> pi = row_se_min_labels(counts, eps2=0.3**2, max_iter=20_000)
+        >>> bool(0 < pi.sum() <= counts.shape[1])
+        True
     """
     # Validate inputs
     counts = validate_counts_matrix(counts)

@@ -14,7 +14,8 @@ def test_pi_aopt_budget_sums():
     pi_result = pi_aopt_for_budget(counts, X, K, pi_min=1e-4)
     pi = pi_result.probabilities
     assert abs(pi.sum() - K) < 1e-2
-    assert (pi.values >= 1e-4 - 1e-12).all() and (pi.values <= 1.0 + 1e-12).all()
+    assert (pi.values >= 1e-4 - 1e-12).all()
+    assert (pi.values <= 1.0 + 1e-12).all()
 
 
 def test_balanced_fixed_size_returns_K():
@@ -31,7 +32,7 @@ def test_balanced_fixed_size_returns_K():
 
 
 def test_row_se_min_labels_basic():
-    counts, X = make_synth(n=50, m=90, p=5, random_state=21)
+    counts, _ = make_synth(n=50, m=90, p=5, random_state=21)
     T = counts.sum(axis=1).to_numpy(float)
     sumq = ((counts.to_numpy(float) / np.maximum(T[:, None], 1e-12)) ** 2).sum(axis=1)
     # lax caps => tiny budget
@@ -40,7 +41,8 @@ def test_row_se_min_labels_basic():
         counts, eps2, pi_min=1e-4, max_iter=2000, return_result=True
     )
     pi = result.probabilities
-    assert (pi.values >= 1e-4).all() and (pi.values <= 1.0).all()
+    assert (pi.values >= 1e-4).all()
+    assert (pi.values <= 1.0).all()
     assert result.feasible
     assert result.max_violation <= result.tolerance + 1e-9
 

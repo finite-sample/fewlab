@@ -1,11 +1,9 @@
-# Pre-commit configuration to ensure code quality before commits
-# This mirrors the CI/CD pipeline to catch issues locally before pushing
-
+# Local mirror of what CI enforces, so a failure shows up before the push.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.15.22
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: [--fix]
       - id: ruff-format
 
@@ -13,13 +11,13 @@ repos:
     rev: v1.1.407
     hooks:
       - id: pyright
-        exclude: ^(examples|tests)/
+        exclude: ^(docs|tests)/
         additional_dependencies:
           - numpy
           - pandas
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer

@@ -1,11 +1,14 @@
+"""A-optimal influence weights, inclusion probabilities, and item selection.
+
+This is the entry point most callers use: it turns a counts matrix and a
+feature matrix into per-item influence weights, and from those into either a
+deterministic shortlist or a set of inclusion probabilities for a budget.
+"""
+
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-
-if TYPE_CHECKING:
-    pass
 
 from .constants import (
     CONDITION_THRESHOLD,
@@ -68,7 +71,7 @@ def _influence(
         if has_sparse:
             # Use pandas sparse accessor if available
             try:
-                # For sparse DataFrames, convert to scipy sparse for efficient computation
+                # For sparse DataFrames, go through scipy sparse to stay cheap
                 import scipy.sparse  # type: ignore[import-untyped]  # noqa: F401
 
                 C_sparse = counts.sparse.to_coo()  # type: ignore[attr-defined]
@@ -112,28 +115,30 @@ def pi_aopt_for_budget(
     ensure_full_rank: bool = True,
     ridge: float | None = None,
 ) -> ProbabilityResult:
-    """
-    Compute A-optimal first-order inclusion probabilities for a target budget.
+    """Compute A-optimal first-order inclusion probabilities for a target budget.
 
-    The probabilities follow the square-root rule `pi_j = clip(c * sqrt(w_j), [pi_min, 1])` with
-    `c` chosen so that `sum(pi) = budget`.
+    The probabilities follow the square-root rule
+    `pi_j = clip(c * sqrt(w_j), [pi_min, 1])`, with `c` chosen so that
+    `sum(pi) = budget`.
 
     Args:
         counts: Count matrix with non-negative values.
         X: Feature matrix aligned with `counts.index`.
         budget: Expected total budget (sum of inclusion probabilities).
         pi_min: Minimum allowed inclusion probability.
-        ensure_full_rank: Whether to add a small ridge term when `X^T X` is ill-conditioned.
+        ensure_full_rank: Whether to add a small ridge term when `X^T X` is
+            ill-conditioned.
         ridge: Explicit ridge parameter overriding the automatic heuristic.
 
     Returns:
         Probability result with inclusion probabilities and computation diagnostics.
 
     Note:
-        If `budget < m * pi_min` (where m is the number of items), the budget constraint
-        cannot be satisfied. In this case, the function returns all probabilities as `pi_min`,
-        resulting in `sum(pi) = m * pi_min > budget`, and issues a warning. The violation
-        details are included in the result's diagnostics under `budget_violation`.
+        If `budget < m * pi_min` (where m is the number of items), the budget
+        constraint cannot be satisfied. The function then returns every
+        probability as `pi_min`, so `sum(pi) = m * pi_min > budget`, and issues a
+        warning. The violation details land in the result's diagnostics under
+        `budget_violation`.
 
     See Also:
         items_to_label: Deterministic selection using the same influence weights.
@@ -171,11 +176,10 @@ def items_to_label(
     ensure_full_rank: bool = True,
     ridge: float | None = None,
 ) -> SelectionResult:
-    """
-    Select items to label using deterministic A-optimal design.
+    """Select items to label using deterministic A-optimal design.
 
-    Influence weights are computed as `w_j = g_j^T (X^T X)^{-1} g_j`, and the top entries are
-    returned.
+    Influence weights are computed as `w_j = g_j^T (X^T X)^{-1} g_j`, and the top
+    entries are returned.
 
     Args:
         counts: Count matrix with units as rows and items as columns.
