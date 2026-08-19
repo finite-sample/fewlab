@@ -1,11 +1,11 @@
-"""
-Common utility functions for fewlab.
+"""Common utility functions for fewlab.
 
 This module provides shared helper functions to reduce code duplication
 across the library.
 """
 
 from collections.abc import Sequence
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -14,10 +14,9 @@ from .constants import DIVISION_EPS
 
 
 def _get_random_generator(
-    random_state: None | int | np.random.Generator,
+    random_state: int | np.random.Generator | None,
 ) -> np.random.Generator:
-    """
-    Create or validate a numpy random generator.
+    """Create or validate a numpy random generator.
 
     Args:
         random_state: Random state specification. Can be:
@@ -36,13 +35,11 @@ def _get_random_generator(
     """
     if isinstance(random_state, np.random.Generator):
         return random_state
-    else:
-        return np.random.default_rng(random_state)
+    return np.random.default_rng(random_state)
 
 
 def compute_g_matrix(counts: pd.DataFrame, X: pd.DataFrame) -> np.ndarray:
-    """
-    Compute the regression projection matrix G = X^T V.
+    """Compute the regression projection matrix G = X^T V.
 
     Args:
         counts: Count matrix with units as rows and items as columns (shape (n, m)).
@@ -55,7 +52,8 @@ def compute_g_matrix(counts: pd.DataFrame, X: pd.DataFrame) -> np.ndarray:
         ValueError: If indices are misaligned or every row sum is zero.
 
     Notes:
-        This helper normalizes counts into the matrix V where v_j = counts_j / row_totals.
+        This helper normalizes counts into the matrix V where
+        v_j = counts_j / row_totals.
     """
     if not counts.index.equals(X.index):
         raise ValueError("counts.index must align with X.index")
@@ -78,8 +76,7 @@ def compute_g_matrix(counts: pd.DataFrame, X: pd.DataFrame) -> np.ndarray:
 
 
 def validate_fraction(value: float, name: str = "fraction") -> None:
-    """
-    Validate that a value is a proper fraction in (0, 1).
+    """Validate that a value is a proper fraction in (0, 1).
 
     Args:
         value: Value to validate.
@@ -98,8 +95,7 @@ def validate_fraction(value: float, name: str = "fraction") -> None:
 def compute_horvitz_thompson_weights(
     pi: pd.Series, selected: pd.Index | Sequence[str]
 ) -> pd.Series:
-    """
-    Compute Horvitz-Thompson weights (1/pi) for selected items.
+    """Compute Horvitz-Thompson weights (1/pi) for selected items.
 
     Args:
         pi: Inclusion probabilities for all items.
@@ -108,17 +104,14 @@ def compute_horvitz_thompson_weights(
     Returns:
         Horvitz-Thompson weights indexed by the selected items.
     """
-    ht_weights = 1.0 / (pi + DIVISION_EPS)
-    assert isinstance(ht_weights, pd.Series), "Expected pd.Series from division"
+    ht_weights = cast("pd.Series", 1.0 / (pi + DIVISION_EPS))
     if isinstance(selected, pd.Index):
         return ht_weights.reindex(selected)
-    else:
-        return ht_weights.reindex(list(selected))
+    return ht_weights.reindex(list(selected))
 
 
 def align_indices(*dataframes: pd.DataFrame | pd.Series) -> bool:
-    """
-    Check if all dataframes/series have aligned indices.
+    """Check if all dataframes/series have aligned indices.
 
     Args:
         *dataframes: Data objects to compare.
@@ -136,8 +129,7 @@ def align_indices(*dataframes: pd.DataFrame | pd.Series) -> bool:
 def get_item_positions(
     items: pd.Index | Sequence[str], reference: pd.Index
 ) -> np.ndarray:
-    """
-    Map item names to their positions in a reference index.
+    """Map item names to their positions in a reference index.
 
     Args:
         items: Item identifiers to map.

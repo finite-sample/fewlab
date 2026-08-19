@@ -96,7 +96,7 @@ class TestCalibration:
         # Check output
         assert isinstance(estimate, pd.Series)
         assert len(estimate) == self.n
-        assert all(0 <= estimate) & all(estimate <= 1)  # Shares should be in [0,1]
+        assert all(estimate >= 0) & all(estimate <= 1)  # Shares should be in [0,1]
 
     def test_calibration_edge_cases(self):
         """Test edge cases in calibration."""
@@ -255,10 +255,10 @@ class TestHybridMethods:
         from fewlab.hybrid import core_plus_tail
 
         # Invalid tail_frac
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"tail_frac must be in \(0, 1\)"):
             core_plus_tail(self.counts, self.X, budget=10, tail_frac=0)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=r"tail_frac must be in \(0, 1\)"):
             core_plus_tail(self.counts, self.X, budget=10, tail_frac=1.0)
 
         # budget larger than m should raise ValidationError
@@ -335,8 +335,8 @@ class TestIntegration:
         # Both should produce valid estimates
         assert len(estimate_cal) == self.n
         assert len(estimate_ht) == self.n
-        assert all(0 <= estimate_cal) & all(estimate_cal <= 1)
-        assert all(0 <= estimate_ht) & all(estimate_ht <= 1)
+        assert all(estimate_cal >= 0) & all(estimate_cal <= 1)
+        assert all(estimate_ht >= 0) & all(estimate_ht <= 1)
 
         # Calibrated should satisfy constraint better
         g_selected = g[:, [self.counts.columns.get_loc(c) for c in selected]]

@@ -77,7 +77,8 @@ def test_greedy_vs_topk_performance():
         # The formulation in `core.py` is about "shares".
         # The "influence" w_j is defined as g_j' (X'X)^-1 g_j.
         # This is the leverage of the *projection* of item j onto X space.
-        # If we want to estimate beta from the selected items, we want to maximize information.
+        # If we want to estimate beta from the selected items, we want to
+        # maximize information.
         # Information matrix ~ sum_j g_j g_j^T.
 
         M = ridge + G_sel @ G_sel.T
@@ -86,11 +87,10 @@ def test_greedy_vs_topk_performance():
     trace_greedy = compute_trace_inv(sel_greedy)
     trace_topk = compute_trace_inv(sel_topk)
 
-    print(f"Trace Greedy: {trace_greedy}")
-    print(f"Trace Top-K: {trace_topk}")
-
-    # Greedy should be better (lower trace)
-    assert trace_greedy <= trace_topk + 1e-9
+    # Greedy should be better (lower trace).
+    assert trace_greedy <= trace_topk + 1e-9, (
+        f"greedy trace {trace_greedy} worse than top-k {trace_topk}"
+    )
 
 
 def test_sparse_support():

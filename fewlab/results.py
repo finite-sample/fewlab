@@ -1,5 +1,4 @@
-"""
-Structured result classes for fewlab functions.
+"""Structured result classes for fewlab functions.
 
 This module provides typed, structured return values that replace loose tuples
 and dict-based returns with direct attribute access for better API consistency.
@@ -14,8 +13,7 @@ import pandas as pd
 
 @dataclass(frozen=True, slots=True)
 class CoreTailResult:
-    """
-    Structured result for hybrid core+tail selection methods.
+    """Structured result for hybrid core+tail selection methods.
 
     Attributes:
         selected: All selected item identifiers (core + tail).
@@ -23,7 +21,8 @@ class CoreTailResult:
         core: Deterministic core items (highest influence).
         tail: Probabilistic tail items (balanced sampling).
         ht_weights: Standard Horvitz-Thompson weights for the selected items.
-        mixed_weights: Mixed weights (1/pi for core, 1.0 for tail) for variance reduction.
+        mixed_weights: Mixed weights (1/pi for core, 1.0 for tail) for variance
+            reduction.
         diagnostics: Additional metadata such as budget splits and tail fraction.
 
     Properties:
@@ -33,7 +32,16 @@ class CoreTailResult:
         tail_frac: Fraction of the budget allocated to the tail.
 
     Examples:
-        >>> result = design.sample(budget=50, method="core_plus_tail", tail_frac=0.2)
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from fewlab import Design
+        >>> rng = np.random.default_rng(0)
+        >>> counts = pd.DataFrame(rng.poisson(5, (1000, 100)))
+        >>> X = pd.DataFrame(rng.standard_normal((1000, 3)))
+        >>> design = Design(counts, X)
+        >>> result = design.sample(
+        ...     budget=50, method="core_plus_tail", tail_frac=0.2
+        ... )
         >>> len(result.selected), len(result.core), len(result.tail)
         (50, 40, 10)
     """
@@ -94,8 +102,7 @@ class CoreTailResult:
 
 @dataclass(frozen=True, slots=True)
 class SelectionResult:
-    """
-    Structured result for deterministic selection methods.
+    """Structured result for deterministic selection methods.
 
     Attributes:
         selected: Selected item identifiers ordered by influence.
@@ -106,6 +113,13 @@ class SelectionResult:
         budget_used: Number of items selected.
 
     Examples:
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from fewlab import Design
+        >>> rng = np.random.default_rng(0)
+        >>> counts = pd.DataFrame(rng.poisson(5, (1000, 100)))
+        >>> X = pd.DataFrame(rng.standard_normal((1000, 3)))
+        >>> design = Design(counts, X)
         >>> result = design.select(budget=30, method="deterministic")
         >>> len(result.selected)
         30
@@ -142,8 +156,7 @@ class SelectionResult:
 
 @dataclass(frozen=True, slots=True)
 class SamplingResult:
-    """
-    Structured result for probabilistic sampling methods.
+    """Structured result for probabilistic sampling methods.
 
     Attributes:
         sample: Sampled item identifiers.
@@ -155,6 +168,13 @@ class SamplingResult:
         sample_size: Number of sampled items.
 
     Examples:
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from fewlab import Design
+        >>> rng = np.random.default_rng(0)
+        >>> counts = pd.DataFrame(rng.poisson(5, (1000, 100)))
+        >>> X = pd.DataFrame(rng.standard_normal((1000, 3)))
+        >>> design = Design(counts, X)
         >>> result = design.sample(budget=30, method="balanced")
         >>> result.sample_size
         30
@@ -197,24 +217,27 @@ class SamplingResult:
 
 @dataclass(frozen=True, slots=True)
 class EstimationResult:
-    """
-    Structured result for estimation methods.
+    """Structured result for estimation methods.
 
-    Attributes
-    ----------
-    estimates : pd.Series
-        Row-wise estimates.
-    weights : pd.Series
-        Calibrated weights used for estimation.
-    selected : pd.Index
-        Items used for estimation.
-    diagnostics : dict[str, Any]
-        Estimation diagnostics.
+    Attributes:
+        estimates: Row-wise estimates.
+        weights: Calibrated weights used for estimation.
+        selected: Items used for estimation.
+        diagnostics: Estimation diagnostics.
 
-    Examples
-    --------
-    >>> result = design.estimate(selected, labels)
-    >>> print(f"Mean estimate: {result.estimates.mean():.3f}")
+    Examples:
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from fewlab import Design
+        >>> rng = np.random.default_rng(0)
+        >>> counts = pd.DataFrame(rng.poisson(5, (1000, 100)))
+        >>> X = pd.DataFrame(rng.standard_normal((1000, 3)))
+        >>> design = Design(counts, X)
+        >>> selected = design.select(budget=30).selected
+        >>> labels = pd.Series(rng.random(len(selected)), index=selected)
+        >>> result = design.estimate(selected, labels)
+        >>> len(result.estimates)
+        1000
     """
 
     estimates: pd.Series
@@ -232,33 +255,39 @@ class EstimationResult:
 
 @dataclass(frozen=True, slots=True)
 class ProbabilityResult:
-    """
-    Structured result for probability computation methods.
+    """Structured result for probability computation methods.
 
-    Provides access to computed probabilities, influence projections, and computation diagnostics.
+    Provides access to computed probabilities, influence projections, and
+    computation diagnostics.
 
-    Attributes
-    ----------
-    probabilities : pd.Series
-        Inclusion probabilities indexed by item identifiers.
-    influence_projections : np.ndarray
-        Regression projections g_j = X^T v_j for all items (shape (p, m)).
-        Used for balanced sampling and weight calibration.
-    diagnostics : dict[str, Any]
-        Computation diagnostics and metadata.
+    Attributes:
+        probabilities: Inclusion probabilities indexed by item identifiers.
+        influence_projections: Regression projections g_j = X^T v_j for all
+            items (shape (p, m)). Used for balanced sampling and weight
+            calibration.
+        diagnostics: Computation diagnostics and metadata.
 
-    Properties
-    ----------
-    budget_used : float
-        Sum of inclusion probabilities.
+    Properties:
+        budget_used: Sum of inclusion probabilities.
 
-    Examples
-    --------
-    >>> result = design.inclusion_probabilities(budget=50, method="aopt")
-    >>> print(f"Budget used: {result.budget_used:.1f}")
-    >>> # Now you can use influence_projections for balanced sampling
-    >>> from fewlab import balanced_fixed_size
-    >>> selected = balanced_fixed_size(result.probabilities, result.influence_projections, 50)
+    Examples:
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from fewlab import Design
+        >>> rng = np.random.default_rng(0)
+        >>> counts = pd.DataFrame(rng.poisson(5, (1000, 100)))
+        >>> X = pd.DataFrame(rng.standard_normal((1000, 3)))
+        >>> design = Design(counts, X)
+        >>> result = design.inclusion_probabilities(budget=50, method="aopt")
+        >>> round(result.budget_used, 1)
+        50.0
+        >>> # influence_projections then feeds balanced sampling
+        >>> from fewlab import balanced_fixed_size
+        >>> selected = balanced_fixed_size(
+        ...     result.probabilities, result.influence_projections, 50
+        ... )
+        >>> len(selected)
+        50
     """
 
     probabilities: pd.Series
@@ -284,8 +313,7 @@ class ProbabilityResult:
 
 @dataclass(frozen=True, slots=True)
 class RowSEResult:
-    """
-    Result container for `row_se_min_labels`.
+    """Result container for `row_se_min_labels`.
 
     Attributes:
         probabilities: Inclusion probabilities indexed by item identifiers.

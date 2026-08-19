@@ -1,5 +1,4 @@
-"""
-Numerical constants and algorithm parameters for fewlab.
+"""Numerical constants and algorithm parameters for fewlab.
 
 This module centralizes all magic numbers used throughout the codebase,
 providing clear documentation for their purpose and mathematical significance.

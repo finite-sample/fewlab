@@ -31,6 +31,7 @@ fewlab: fewest items to label for most efficient unbiased OLS
    examples
    api
    mathematical_background
+   EVALUATION_RESULTS
 
 Overview
 --------
@@ -79,7 +80,9 @@ Quick Example
    # Send priority_items to your labeling team
    print(f"Label these items first: {priority_items}")
 
-For a complete demonstration with performance analysis, see our `interactive Jupyter notebook <fewlab_demo_colab.html>`_ showing ~33% reduction in standard errors compared to random selection.
+For a complete demonstration with performance analysis, run the `interactive
+Jupyter notebook <https://colab.research.google.com/github/finite-sample/fewlab/blob/main/docs/fewlab_demo_colab.ipynb>`_,
+which shows a ~33% reduction in standard errors compared to random selection.
 
 Installation
 ------------

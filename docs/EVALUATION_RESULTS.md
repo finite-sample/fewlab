@@ -165,7 +165,7 @@ For each method:
 
 ## References
 
-- FewLab documentation: https://fewlab.readthedocs.io
+- FewLab documentation: https://finite-sample.github.io/fewlab/
 - Deville & Särndal (1992): Calibration estimators in survey sampling
 - Fuller (2009): Sampling Statistics, Ch. 6 on optimal design
 

@@ -171,18 +171,18 @@ def run_budget_experiment(cfg: BudgetConfig) -> pd.DataFrame:
                 beta_hat = result["beta_hat"]
                 error = beta_hat - beta_true
 
-                for coef_idx in range(cfg.p_features):
-                    results.append(
-                        {
-                            "K_budget": K,
-                            "K_pct": 100 * K / cfg.n_items,
-                            "simulation": sim_idx,
-                            "method": method_name,
-                            "coefficient": coef_idx,
-                            "error": error[coef_idx],
-                            "squared_error": error[coef_idx] ** 2,
-                        }
-                    )
+                results.extend(
+                    {
+                        "K_budget": K,
+                        "K_pct": 100 * K / cfg.n_items,
+                        "simulation": sim_idx,
+                        "method": method_name,
+                        "coefficient": coef_idx,
+                        "error": error[coef_idx],
+                        "squared_error": error[coef_idx] ** 2,
+                    }
+                    for coef_idx in range(cfg.p_features)
+                )
 
     return pd.DataFrame(results)
 
@@ -233,12 +233,12 @@ def plot_budget_sensitivity(summary: pd.DataFrame, cfg: BudgetConfig):
         .reset_index()
     )
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    _fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
     methods = [m for m in avg_by_budget["method"].unique() if m != "Random"]
 
     # Plot 1: Variance vs Budget
-    for method in methods + ["Random"]:
+    for method in [*methods, "Random"]:
         data = avg_by_budget[avg_by_budget["method"] == method]
         axes[0].plot(
             data["K_pct"],
@@ -358,7 +358,9 @@ def print_summary_table(summary: pd.DataFrame, cfg: BudgetConfig):
 
         print(f"  {method}:")
         print(
-            f"    Best gain: {gain:+.2f}% at K={int(best_budget_row['K_budget'])} ({best_budget_row['K_pct']:.1f}% of items)"
+            f"    Best gain: {gain:+.2f}% at "
+            f"K={int(best_budget_row['K_budget'])} "
+            f"({best_budget_row['K_pct']:.1f}% of items)"
         )
 
 

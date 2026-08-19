@@ -6,12 +6,9 @@ This page contains practical examples of using fewlab in different scenarios.
 Complete Interactive Demo
 -------------------------
 
-For a comprehensive demonstration with real-world performance analysis, see our **interactive Jupyter notebook**:
-
-.. toctree::
-   :maxdepth: 1
-
-   fewlab_demo_colab
+For a comprehensive demonstration with real-world performance analysis, run our
+**interactive Jupyter notebook** (`docs/fewlab_demo_colab.ipynb
+<https://github.com/finite-sample/fewlab/blob/main/docs/fewlab_demo_colab.ipynb>`_):
 
 |Colab| **Run in Google Colab** for an interactive experience
 

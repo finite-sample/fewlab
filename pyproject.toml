@@ -1,18 +1,15 @@
-[build-system]
-requires = ["uv_build"]
-build-backend = "uv_build"
-
 [project]
 name = "fewlab"
 version = "2.0.0"
 description = "Pick the fewest items to label for unbiased OLS on shares"
 readme = "README.md"
-requires-python = ">=3.12,<3.15"
-authors = [{ name = "Gaurav Sood" }]
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+authors = [{ name = "Gaurav Sood", email = "gsood07@gmail.com" }]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -27,94 +24,91 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/finite-sample/fewlab"
+Documentation = "https://finite-sample.github.io/fewlab/"
+Repository = "https://github.com/finite-sample/fewlab"
 
-[project.optional-dependencies]
-docs = [
-  "sphinx>=7.0",
-  "furo>=2024.7.18",
-  "sphinx-autodoc-typehints>=1.25",
-  "sphinx-design>=0.6.0",
-  "nbsphinx>=0.9.0",
-  "jupyter>=1.0",
-  "ipykernel>=6.0",
-  "matplotlib>=3.4",
-  "seaborn>=0.11",
-  "scipy>=1.7",
-]
-dev = [
-  "pytest>=7.0",
-  "ruff>=0.7.0",
-  "pre-commit>=3.0.0",
-  "mypy>=1.0",
-]
-test = [
-  "pytest>=7.0",
-  "pytest-cov>=4.0",
-]
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# Flat layout: the package sits at the repo root, not under src/.
+module-root = ""
+module-name = "fewlab"
 
 [dependency-groups]
 dev = [
-    "pydoclint>=0.8.3",
+    "ruff>=0.14",
     "pyright>=1.1.407",
-    "pre-commit>=3.0.0",
+    "pydoclint>=0.8.3",
+    "pre-commit>=4",
+    { include-group = "test" },
 ]
 test = [
-    "pytest>=9.0.1",
-    "pytest-cov>=7.0.0",
+    "pytest>=8",
+    "pytest-cov>=6",
     # A git reference, so it stays in dependency-groups and out of the published
     # extras: PyPI rejects direct URL references in project metadata.
     "simcheck @ git+https://github.com/finite-sample/simcheck",
 ]
-
-# uv build backend configuration
-[tool.uv.build-backend]
-module-root = "."
-include-package-data = true
+docs = [
+    "sphinx>=8",
+    "py-canon @ git+https://github.com/gojiplus/py-canon@v1",
+    "furo",
+    "myst-parser",
+    "sphinx-copybutton",
+    # The evaluation scripts under docs/ are imported by nothing, but the
+    # narrative pages quote numbers they produce; keep them runnable.
+    "matplotlib>=3.4",
+    "scipy>=1.7",
+    "seaborn>=0.11",
+]
 
 [tool.ruff]
 line-length = 88
-target-version = "py313"
-exclude = [
-  ".git",
-  "__pycache__",
-  "build",
-  "dist",
-  ".venv",
-  "docs",
-  "*.ipynb",
-]
+target-version = "py312"
 
 [tool.ruff.lint]
+external = ["DOC"]
 select = [
-  "E",  # pycodestyle errors
-  "W",  # pycodestyle warnings
-  "F",  # pyflakes
-  "I",  # isort
-  "B",  # flake8-bugbear
-  "C4", # flake8-comprehensions
-  "UP", # pyupgrade
+    "E", "W", "F", "I", "B", "C4", "UP", "N", "D", "S", "SIM", "T20", "PT", "RUF",
+    "PTH", "RET", "PIE", "FURB", "PERF", "DTZ", "LOG", "G", "TC", "FLY",
+    "RSE", "SLOT", "FA", "A", "EXE", "ICN", "PGH", "PLE", "ARG", "SLF",
 ]
-ignore = [
-  "E501",  # line too long (handled by formatter)
-  "B008",  # do not perform function calls in argument defaults
-]
+# D203/D213: the google convention the fleet standard picks. W191/D206/D300:
+# ruff's own docs list these as always incompatible with `ruff format`, which
+# the standard also runs.
+ignore = ["D203", "D213", "W191", "D206", "D300"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
-"tests/*" = ["S101"]
-"docs/*" = ["E402", "F841"]
+# N803/N806: this package is linear algebra. The design matrix is X, the row
+# totals T, the projections G, the counts C -- the same convention scikit-learn
+# and statsmodels use. Renaming them to snake_case would make the code harder
+# to check against the derivations in docs/mathematical_background.rst.
+"fewlab/**" = ["N803", "N806"]
+# Unused fixture arguments and private-member access are how tests are written.
+"tests/**" = ["S101", "D", "ARG", "SLF", "N"]
+"docs/**" = ["D", "N803", "N806"]
+# Re-exports: the public API is assembled here, so the imports are the point.
+"fewlab/__init__.py" = ["F401", "N803", "N806"]
+# Standalone evaluation scripts, run by hand. T201: printing the table is the
+# whole output. ARG: the sample_* / plot_* families share one signature so they
+# can be dispatched by name, and not every member uses every argument. S101:
+# the asserts state invariants of the script's own config object.
+"docs/evaluate_*.py" = ["D", "N803", "N806", "T201", "ARG", "S101"]
+# A notebook prints its results; that is what a notebook is for.
+"*.ipynb" = ["T201"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["fewlab"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = "test_*.py"
-addopts = "--cov=fewlab --cov-report=html --cov-report=term-missing"
-
 [tool.pyright]
+include = ["fewlab"]
+typeCheckingMode = "standard"
 pythonVersion = "3.14"
-typeCheckingMode = "basic"
 reportUnusedImport = true
 reportUnusedVariable = true
 reportMissingTypeStubs = false
@@ -124,15 +118,25 @@ reportUnknownArgumentType = false
 exclude = ["docs/evaluate_*.py"]
 
 [tool.pydoclint]
-style = 'google'
+style = "google"
 arg-type-hints-in-signature = true
 arg-type-hints-in-docstring = false
 check-return-types = false
-skip-checking-short-docstrings = true
-allow-init-docstring = true
+check-class-attributes = false
 check-yield-types = false
+allow-init-docstring = true
+skip-checking-short-docstrings = true
+exclude = '\.venv|tests|docs'
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["fewlab"]
 
 [tool.deptry]
 extend_exclude = ["docs"]
 ignore_notebooks = true
 pep621_dev_dependency_groups = ["dev", "test", "docs"]
+
+[tool.preen]

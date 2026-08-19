@@ -1,10 +1,11 @@
+"""Small selection helpers shared by the selection strategies."""
+
 import numpy as np
 import pandas as pd
 
 
 def topk(arr: np.ndarray, k: int, *, index: pd.Index | None = None) -> pd.Index:
-    """
-    Return indices of the top-k entries of ``arr`` in descending order.
+    """Return indices of the top-k entries of ``arr`` in descending order.
 
     Args:
         arr: Array of scores to rank.
@@ -29,5 +30,4 @@ def topk(arr: np.ndarray, k: int, *, index: pd.Index | None = None) -> pd.Index:
         result = index[idx]
         result.name = "topk_indices"
         return result
-    else:
-        return pd.Index(idx, name="topk_indices")
+    return pd.Index(idx, name="topk_indices")

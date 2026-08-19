@@ -261,9 +261,7 @@ def estimate_coefficients(
 
     # Fit OLS: X -> y_hat
     X_vals = X.to_numpy()
-    beta_hat = fit_weighted_ols(X_vals, y_hat)
-
-    return beta_hat
+    return fit_weighted_ols(X_vals, y_hat)
 
 
 def run_single_simulation(
@@ -322,19 +320,19 @@ def run_simulations(cfg: SimConfig) -> pd.DataFrame:
             beta_true = result["beta_true"]
             error = beta_hat - beta_true
 
-            for coef_idx in range(cfg.p_features):
-                all_results.append(
-                    {
-                        "simulation": sim_idx,
-                        "method": method_name,
-                        "coefficient": coef_idx,
-                        "beta_hat": beta_hat[coef_idx],
-                        "beta_true": beta_true[coef_idx],
-                        "error": error[coef_idx],
-                        "squared_error": error[coef_idx] ** 2,
-                        "time": result["time"],
-                    }
-                )
+            all_results.extend(
+                {
+                    "simulation": sim_idx,
+                    "method": method_name,
+                    "coefficient": coef_idx,
+                    "beta_hat": beta_hat[coef_idx],
+                    "beta_true": beta_true[coef_idx],
+                    "error": error[coef_idx],
+                    "squared_error": error[coef_idx] ** 2,
+                    "time": result["time"],
+                }
+                for coef_idx in range(cfg.p_features)
+            )
 
     return pd.DataFrame(all_results)
 
@@ -376,7 +374,7 @@ def plot_results(summary: pd.DataFrame, cfg: SimConfig):
     sns.set_style("whitegrid")
 
     # 1. Variance comparison by coefficient
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+    _fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
     # Variance
     for method in methods:
@@ -426,7 +424,7 @@ def plot_results(summary: pd.DataFrame, cfg: SimConfig):
     print(f"\nSaved plot to {output_path.relative_to(REPO_ROOT)}")
 
     # 2. Average metrics across all coefficients
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+    _fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
     avg_summary = (
         summary.groupby("method")

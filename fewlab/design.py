@@ -1,12 +1,11 @@
-"""
-Primary Design class for optimal experimental design with cached computations.
+"""Primary Design class for optimal experimental design with cached computations.
 
 This module provides the main object-oriented interface to fewlab functionality,
 replacing the functional API with a stateful design that caches expensive
 influence computations and provides comprehensive diagnostics.
 """
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -17,6 +16,15 @@ from .constants import (
     SMALL_RIDGE,
 )
 from .core import _influence
+
+# Import result classes at the end to avoid circular imports
+from .results import (
+    CoreTailResult,
+    EstimationResult,
+    ProbabilityResult,
+    SamplingResult,
+    SelectionResult,
+)
 from .validation import (
     ValidationError,
     validate_budget,
@@ -25,25 +33,13 @@ from .validation import (
     validate_features_matrix,
 )
 
-# Import result classes at the end to avoid circular imports
-if TYPE_CHECKING:
-    pass
-
-from .results import (
-    CoreTailResult,
-    EstimationResult,
-    ProbabilityResult,
-    SamplingResult,
-    SelectionResult,
-)
-
 
 class Design:
-    """
-    Primary interface for optimal experimental design with cached computations.
+    """Primary interface for optimal experimental design with cached computations.
 
-    The class stores processed data, cached influence matrices, and diagnostics so that repeated
-    operations such as selection, sampling, and calibration can reuse expensive intermediate
+    The class stores processed data, cached influence matrices, and diagnostics so
+    that repeated operations such as selection, sampling, and calibration can
+    reuse expensive intermediate
     results.
 
     Examples:
@@ -51,10 +47,11 @@ class Design:
         >>> import numpy as np
         >>> from fewlab import Design
         >>>
-        >>> counts = pd.DataFrame(np.random.poisson(5, (1000, 100)))
-        >>> X = pd.DataFrame(np.random.randn(1000, 3))
+        >>> rng = np.random.default_rng(0)
+        >>> counts = pd.DataFrame(rng.poisson(5, (1000, 100)))
+        >>> X = pd.DataFrame(rng.standard_normal((1000, 3)))
         >>> design = Design(counts, X)
-        >>> design.select(budget=20).shape[0]
+        >>> len(design.select(budget=20).selected)
         20
     """
 
@@ -68,8 +65,7 @@ class Design:
         ridge: float | Literal["auto"] = "auto",
         ensure_full_rank: bool = True,
     ) -> None:
-        """
-        Initialize the design with validated data and cached influence computation.
+        """Initialize the design with validated data and cached influence computation.
 
         Args:
             counts: Count matrix with non-negative entries.
@@ -154,7 +150,8 @@ class Design:
         if condition_number > CONDITION_THRESHOLD:
             self._diagnostics["warnings"] = self._diagnostics.get("warnings", [])
             self._diagnostics["warnings"].append(
-                f"High condition number ({condition_number:.2e}) may indicate numerical issues"
+                f"High condition number ({condition_number:.2e}) may indicate "
+                "numerical issues"
             )
 
     @property
@@ -180,12 +177,12 @@ class Design:
     def select(
         self, budget: int, method: Literal["deterministic", "greedy"] = "deterministic"
     ) -> SelectionResult:
-        """
-        Select items using deterministic algorithms.
+        """Select items using deterministic algorithms.
 
         Args:
             budget: Number of items to select.
-            method: Selection algorithm: `"deterministic"` (batch) or `"greedy"` (sequential).
+            method: Selection algorithm: `"deterministic"` (batch) or `"greedy"`
+                (sequential).
 
         Returns:
             Selection result with items, influence weights, and diagnostics.
@@ -208,12 +205,11 @@ class Design:
 
         if method == "deterministic":
             return self._select_deterministic(budget)
-        elif method == "greedy":
+        if method == "greedy":
             return self._select_greedy(budget)
-        else:
-            raise ValidationError(
-                f"Unknown selection method: {method}", "Use 'deterministic' or 'greedy'"
-            )
+        raise ValidationError(
+            f"Unknown selection method: {method}", "Use 'deterministic' or 'greedy'"
+        )
 
     def _select_deterministic(self, budget: int) -> SelectionResult:
         """Deterministic A-optimal selection (equivalent to items_to_label)."""
@@ -256,14 +252,14 @@ class Design:
         method: Literal["aopt", "row_se"] = "aopt",
         **kwargs: Any,
     ) -> ProbabilityResult:
-        """
-        Compute inclusion probabilities for a given budget.
+        """Compute inclusion probabilities for a given budget.
 
         Args:
             budget: Expected total budget (sum of inclusion probabilities).
             pi_min: Minimum inclusion probability per item.
             method: Probability computation strategy, `"aopt"` or `"row_se"`.
-            \\*\\*kwargs: Additional method-specific arguments (e.g., `eps2` for `"row_se"`).
+            **kwargs: Additional method-specific arguments (e.g. `eps2` for
+                `"row_se"`).
 
         Returns:
             Probability result with inclusion probabilities and diagnostics.
@@ -282,9 +278,7 @@ class Design:
             if hasattr(self, "_last_budget_violation") and self._last_budget_violation:
                 diagnostics["budget_violation"] = self._last_budget_violation
         elif method == "row_se":
-            rowse_result = self._inclusion_probabilities_row_se(
-                budget, pi_min, **kwargs
-            )
+            rowse_result = self._inclusion_probabilities_row_se(pi_min, **kwargs)
             probabilities = rowse_result.probabilities
             diagnostics = {"method": "row_se", "budget": budget, "pi_min": pi_min}
             diagnostics.update(kwargs)
@@ -322,9 +316,11 @@ class Design:
         # Check if budget is feasible given pi_min constraint
         if budget < min_possible_budget:
             warnings.warn(
-                f"Budget {budget} is infeasible with pi_min={pi_min:.3e} for {m} items. "
+                f"Budget {budget} is infeasible with pi_min={pi_min:.3e} "
+                f"for {m} items. "
                 f"Minimum possible budget is {min_possible_budget:.2f}. "
-                f"Returning all probabilities as pi_min, which gives sum(pi)={min_possible_budget:.2f}.",
+                f"Returning all probabilities as pi_min, which gives "
+                f"sum(pi)={min_possible_budget:.2f}.",
                 UserWarning,
                 stacklevel=4,
             )
@@ -359,16 +355,16 @@ class Design:
         _, pi_array = sum_pi(hi)
         return pd.Series(pi_array, index=self._influence.cols, name="pi")
 
-    def _inclusion_probabilities_row_se(
-        self, budget: int, pi_min: float, **kwargs: Any
-    ):
-        """
-        Row-wise SE constrained probabilities (equivalent to `row_se_min_labels`).
+    def _inclusion_probabilities_row_se(self, pi_min: float, **kwargs: Any):
+        """Row-wise SE constrained probabilities (equivalent to `row_se_min_labels`).
+
+        Unlike the A-optimal branch this method takes no budget: the expected
+        number of labels is an output of the SE constraints, not an input.
 
         Args:
-            budget: Expected total budget.
             pi_min: Minimum allowable inclusion probability.
-            \\*\\*kwargs: Additional arguments; must include `eps2` (row-wise SE^2 constraints).
+            **kwargs: Additional arguments; must include `eps2` (row-wise SE^2
+                constraints).
 
         Returns:
             Inclusion probabilities that satisfy the row-wise SE constraints.
@@ -398,17 +394,18 @@ class Design:
         budget: int,
         method: Literal["balanced", "core_plus_tail", "adaptive"] = "balanced",
         *,
-        random_state: None | int | np.random.Generator = None,
+        random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> SamplingResult | CoreTailResult:
-        """
-        Generate probabilistic samples using various methods.
+        """Generate probabilistic samples using various methods.
 
         Args:
             budget: Number of items to sample.
             method: Sampling method (`"balanced"`, `"core_plus_tail"`, or `"adaptive"`).
-            random_state: Random state for reproducible sampling. Can be None, int, or Generator.
-            \\*\\*kwargs: Method-specific parameters (e.g., `tail_frac`, `pi_min`, tolerances).
+            random_state: Random state for reproducible sampling. Accepts None,
+                an int seed, or a numpy Generator.
+            **kwargs: Method-specific parameters (e.g. `tail_frac`, `pi_min`,
+                tolerances).
 
         Returns:
             Sampled item identifiers.
@@ -432,36 +429,35 @@ class Design:
                     weights=empty_weights,
                     diagnostics={"method": method, "budget": budget},
                 )
-            else:  # core_plus_tail or adaptive
-                return CoreTailResult(
-                    selected=empty_selected,
-                    probabilities=empty_pi,
-                    core=empty_selected,
-                    tail=empty_selected,
-                    ht_weights=empty_weights,
-                    mixed_weights=empty_weights,
-                    diagnostics={"method": method, "budget": budget},
-                )
+            # core_plus_tail or adaptive
+            return CoreTailResult(
+                selected=empty_selected,
+                probabilities=empty_pi,
+                core=empty_selected,
+                tail=empty_selected,
+                ht_weights=empty_weights,
+                mixed_weights=empty_weights,
+                diagnostics={"method": method, "budget": budget},
+            )
 
         if method == "balanced":
             return self._sample_balanced(budget, random_state=random_state, **kwargs)
-        elif method == "core_plus_tail":
+        if method == "core_plus_tail":
             return self._sample_core_plus_tail(
                 budget, random_state=random_state, **kwargs
             )
-        elif method == "adaptive":
+        if method == "adaptive":
             return self._sample_adaptive(budget, random_state=random_state, **kwargs)
-        else:
-            raise ValidationError(
-                f"Unknown sampling method: {method}",
-                "Use 'balanced', 'core_plus_tail', or 'adaptive'",
-            )
+        raise ValidationError(
+            f"Unknown sampling method: {method}",
+            "Use 'balanced', 'core_plus_tail', or 'adaptive'",
+        )
 
     def _sample_balanced(
         self,
         budget: int,
         *,
-        random_state: None | int | np.random.Generator = None,
+        random_state: int | np.random.Generator | None = None,
         pi_min: float = PI_MIN_DEFAULT,
         **kwargs: Any,
     ) -> SamplingResult:
@@ -511,20 +507,21 @@ class Design:
         budget: int,
         *,
         tail_frac: float = 0.2,
-        random_state: None | int | np.random.Generator = None,
+        random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoreTailResult:
-        """
-        Hybrid core+tail sampling.
+        """Hybrid core+tail sampling.
 
         Args:
             budget: Total sample size.
             tail_frac: Fraction allocated to the probabilistic tail.
-            random_state: Random state for the tail sampling step. Can be None, int, or Generator.
-            \\*\\*kwargs: Extra arguments forwarded to the balanced sampler.
+            random_state: Random state for the tail sampling step. Accepts None,
+                an int seed, or a numpy Generator.
+            **kwargs: Extra arguments forwarded to the balanced sampler.
 
         Returns:
-            Core+tail result with selected items, probabilities, weights, and diagnostics.
+            Core+tail result with selected items, probabilities, weights, and
+            diagnostics.
         """
         from .hybrid import core_plus_tail
 
@@ -547,7 +544,7 @@ class Design:
         min_tail_frac: float = 0.1,
         max_tail_frac: float = 0.4,
         condition_threshold: float = 1e6,
-        random_state: None | int | np.random.Generator = None,
+        random_state: int | np.random.Generator | None = None,
         **kwargs: Any,
     ) -> CoreTailResult:
         """Adaptive core+tail with data-driven tail fraction."""
@@ -574,8 +571,7 @@ class Design:
         ridge: float = SMALL_RIDGE,
         nonneg: bool = True,
     ) -> pd.Series:
-        """
-        Compute calibrated weights for selected items.
+        """Compute calibrated weights for selected items.
 
         Args:
             selected: Identifiers of sampled items.
@@ -610,13 +606,13 @@ class Design:
         *,
         normalize_by_total: bool = True,
     ) -> EstimationResult:
-        """
-        Compute calibrated Horvitz-Thompson estimates for row shares.
+        """Compute calibrated Horvitz-Thompson estimates for row shares.
 
         Args:
             selected: Identifiers of sampled items.
             labels: Observed labels for the selected items.
-            weights: Optional calibrated weights; if omitted they are computed internally.
+            weights: Optional calibrated weights; if omitted they are computed
+                internally.
             normalize_by_total: Whether to divide by row totals to produce shares.
 
         Returns:

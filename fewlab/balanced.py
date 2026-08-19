@@ -1,3 +1,9 @@
+"""Fixed-size balanced sampling via the cube method.
+
+Draws a sample of exactly the requested size while honouring the given
+inclusion probabilities and keeping the regression projections balanced.
+"""
+
 from typing import cast
 
 import numpy as np
@@ -18,10 +24,9 @@ def balanced_fixed_size(
     g: np.ndarray,
     budget: int,
     *,
-    random_state: None | int | np.random.Generator = None,
+    random_state: int | np.random.Generator | None = None,
 ) -> pd.Index:
-    """
-    Fixed-size balanced sampling with exact inclusion probabilities.
+    """Fixed-size balanced sampling with exact inclusion probabilities.
 
     Draws exactly `budget` items by the cube method, so that three things hold at
     once: item j is included with probability exactly `pi_delivered[j]`, the sample
@@ -41,7 +46,8 @@ def balanced_fixed_size(
         pi: Inclusion probabilities for items. Index contains item identifiers.
         g: Regression projections g_j = X^T v_j for each item j (shape (p, m)).
         budget: Fixed sample size (number of items to select).
-        random_state: Random state for reproducible sampling. Can be None, int, or Generator.
+        random_state: Random state for reproducible sampling. Accepts None, an
+            int seed, or a numpy Generator.
 
     Returns:
         Index of selected items. Length equals `budget`.
@@ -56,21 +62,18 @@ def balanced_fixed_size(
         calibrate_weights: Post-stratification weight adjustment.
 
     Examples:
-        >>> import pandas as pd
         >>> import numpy as np
-        >>> from fewlab import pi_aopt_for_budget, balanced_fixed_size, _influence
-        >>>
-        >>> # Setup data
-        >>> counts = pd.DataFrame(np.random.poisson(5, (1000, 100)))
-        >>> X = pd.DataFrame(np.random.randn(1000, 3))
-        >>>
-        >>> # Compute probabilities and influence matrix
-        >>> pi = pi_aopt_for_budget(counts, X, budget=30)
-        >>> inf = _influence(counts, X)
-        >>>
-        >>> # Balanced sampling
-        >>> selected = balanced_fixed_size(pi, inf.g, budget=30, random_state=42)
-        >>> print(f"Selected {len(selected)} items with balanced design")
+        >>> import pandas as pd
+        >>> from fewlab import balanced_fixed_size, pi_aopt_for_budget
+        >>> rng = np.random.default_rng(0)
+        >>> counts = pd.DataFrame(rng.poisson(5, (1000, 100)))
+        >>> X = pd.DataFrame(rng.standard_normal((1000, 3)))
+        >>> probs = pi_aopt_for_budget(counts, X, budget=30)
+        >>> selected = balanced_fixed_size(
+        ...     probs.probabilities, probs.influence_projections, 30, random_state=42
+        ... )
+        >>> len(selected)
+        30
 
     Notes:
         Earlier releases drew the sample proportional to `pi` without replacement
@@ -79,7 +82,6 @@ def balanced_fixed_size(
         75% of the time before the swaps and 45% after, which biased every
         estimator weighted by `1 / pi`.
     """
-
     # Validate inputs
     pi = validate_probability_series(pi)
     if not isinstance(g, np.ndarray) or g.ndim != 2:
@@ -110,4 +112,4 @@ def balanced_fixed_size(
     constraints: np.ndarray = np.vstack([g * inv_pi[None, :], np.ones(m)])
 
     selected: np.ndarray = cube_sample(target, constraints, rng)
-    return cast(pd.Index, cols[selected])
+    return cast("pd.Index", cols[selected])
