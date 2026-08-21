@@ -265,6 +265,34 @@ Only the second term falls as the budget grows, so the ratio is a stopping rule:
 
 Two estimators recover what that conservatism costs. Fixing the sample size removes the variation in how many items were drawn, and centring each contribution on a weighted mean of the others rather than on zero subtracts exactly that, which is the H\'ajek form for high-entropy unequal-probability designs \citep{Hajek1964}. Balancing removes more: a cube draw holds the auxiliary totals near their population values, so the part of a contribution the auxiliaries explain cannot vary either, and the residual from regressing on them is what remains \citep{DevilleTille2005}. On a synthetic population where all three can be compared against the realized spread over many draws, the ratio of estimated to actual variance under a cube draw is \VarCubePoisson{} for the Poisson expression, \VarCubeHajek{} for H\'ajek and \VarCubeBalanced{} for the balanced residual; on a Bernoulli draw the same three read \VarPoissonPoisson{}, \VarPoissonHajek{} and \VarPoissonBalanced{}. Each is right for its own design and wrong for the others, so the estimator has to be named rather than inferred. Sen--Yates--Grundy estimators using exact joint inclusion probabilities would be exact rather than approximate \citep{Sen1953,YatesGrundy1953}, but those probabilities have no closed form for a cube draw.
 
+\begin{remark}[Resampling does not rescue a bad design]
+\label{rem:bootstrap}
+It is tempting to answer a coverage shortfall with a bootstrap, and the
+diagnosis above suggests why one might: skewness and an unstable variance
+estimate are the conditions under which a bootstrap usually earns its keep. It
+does not work here, and the reason is instructive. Under uniform sampling the
+shortfall comes from draws that miss the high-influence items altogether. In
+exactly those draws $\widehat\beta$ is far from $\beta^*$ \emph{and} the
+estimated variance is small, because the only contributions available to
+estimate a scale from are the small ones that were drawn. The error and its
+estimated size are strongly dependent, and every bootstrap conditions on the
+realized sample, so every bootstrap inherits that dependence. Resampling cannot
+recover information about items that were never sampled.
+
+Measured on a synthetic population, mean coverage of a nominal $0.95$ interval
+under uniform sampling is \CovSrsNormal{} for the normal approximation,
+\CovSrsRademacher{} for a wild bootstrap with Rademacher multipliers,
+\CovSrsDesign{} for multipliers drawn from the design's own Bernoulli law, and
+\CovSrsStudentized{} for the studentized bootstrap. All three variants are
+calibrated to reproduce the design variance exactly, and all three are worse
+than doing nothing. The studentized version, which is meant to offer a
+higher-order refinement, is among the worst, because it leans harder on the
+sample's own understated scale. Under clipped PPS the same four figures are
+\CovPpsNormal{}, \CovPpsRademacher{}, \CovPpsDesign{} and
+\CovPpsStudentized{}: little to fix and nothing gained. The remedy for a badly
+allocated sample is a better allocation.
+\end{remark}
+
 \paragraph{Why item-clustered standard errors do not serve as a check.} Because the same items enter every unit's outcome, the errors of an ordinary least squares fit on $\widehat y$ are shared across units through items, which invites clustering by item as a conservative alternative. It is not one. The item-clustered meat matrix is $\sum_{j\in S}g_jg_j^\top a_j^2/\pi_j^2$ while the design meat is $\sum_{j\in S}(1-\pi_j)g_jg_j^\top a_j^2/\pi_j^2$, so the two differ term by term by $1/(1-\pi_j)$. Clustering treats the sampled items as draws from an infinite population and therefore discards the finite-population correction, charging full variance to the certainty core whose contribution is exactly zero. On the designs of \S\ref{sec:evidence} it overstates the variance by an order of magnitude or more, which is not conservatism but a different quantity.
 
 \paragraph{A different estimand, and the one weighting that suits it.} Proposition~\ref{prop:unbiased} rules out reweighting only for the finite-population target. If the units are a sample from a population in which $y=X\beta+\epsilon$, then $\beta$ rather than $\beta^*$ is the object, $\widehat y$ has error variance $\sigma^2I+\Var(u)$, and that variance is markedly heteroskedastic: a unit whose activity concentrates on the certainty core carries almost no design noise, while a unit spread across obscure items carries a great deal. Generalized least squares exploits exactly that, and is unusually safe here because $\Var(u)$ is known from the design rather than estimated from residuals. It is also, by Proposition~\ref{prop:unbiased}, biased for $\beta^*$: on a synthetic population its variance is smaller by a factor of six to sixteen and its bias for the finite-population coefficient is ten standard errors. Neither number is a defect. They are what it means for two estimators to answer different questions, and the choice has to be made before either is reported.

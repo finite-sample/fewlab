@@ -19,7 +19,12 @@ import numpy as np
 import pandas as pd
 from run_yg_benchmark import MEASURES, frontier, load, run, truth
 from style import DESIGN_ORDER, DESIGN_STYLE, use_style
-from synthetic import covariate_experiment, loss_divergence, variance_comparison
+from synthetic import (
+    bootstrap_comparison,
+    covariate_experiment,
+    loss_divergence,
+    variance_comparison,
+)
 
 import fewlab
 
@@ -266,6 +271,7 @@ def write_synthetic(out: Path, reps: int = 300) -> None:
     macros.update(covariate_experiment(reps=reps))
     macros.update(loss_divergence())
     macros.update(variance_comparison())
+    macros.update(bootstrap_comparison())
     _write_macros(out / "macros_synthetic.tex", macros)
     print(json.dumps(macros, indent=2))
 

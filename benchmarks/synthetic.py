@@ -184,3 +184,77 @@ def variance_comparison(reps: int = 1200, budget: int = 45, seed: int = 31) -> d
             ratio = float(np.median(np.array(v).mean(axis=0) / actual))
             out[f"Var{tag}{name.capitalize()}"] = f"{ratio:.2f}"
     return out
+
+
+def bootstrap_comparison(reps: int = 500, budget: int = 45, seed: int = 31) -> dict:
+    """Compare normal and bootstrap intervals under a good and a bad design.
+
+    Three bootstrap variants, all calibrated to reproduce the design variance
+    exactly, against the plain normal approximation. The point of the exercise
+    is negative: under a badly allocated sample every one of them is worse,
+    because they all condition on a sample that may not contain the items that
+    matter.
+
+    Args:
+        reps: Monte Carlo replicates.
+        budget: Labeling budget.
+        seed: Seed for the population.
+
+    Returns:
+        Mean coverage per design and interval method, as percentages.
+    """
+    rng = np.random.default_rng(seed)
+    n, m = 300, 120
+    Z = rng.normal(size=(n, 2))
+    X = pd.DataFrame(np.c_[np.ones(n), Z], columns=["const", "x1", "x2"])
+    loadings = rng.normal(size=(m, 2))
+    popularity = np.exp(rng.normal(0, 1.3, size=m))
+    rate = np.exp(0.4 + Z @ loadings.T + np.log(popularity) - np.log(popularity).mean())
+    counts = pd.DataFrame(rng.poisson(rate), columns=[f"e{j}" for j in range(m)])
+
+    study = fewlab.Study(counts, X)
+    labels = pd.Series(rng.integers(0, 2, m).astype(float), index=study.influence.items)
+    truth = (study.influence.H @ labels.to_numpy()).ravel()
+    items = list(study.influence.items)
+
+    def intervals(sample, obs, gen, nboot: int = 999) -> dict:
+        pos = np.array([items.index(i) for i in sample.items])
+        pi = sample.probabilities.reindex(sample.items).to_numpy()
+        contrib = study.influence.H[:, pos] * (obs.to_numpy().ravel() / pi)
+        beta = contrib.sum(axis=1)
+        se = np.sqrt(((1.0 - pi) * contrib**2).sum(axis=1))
+        out = {"normal": (beta - 1.96 * se, beta + 1.96 * se)}
+
+        rad = gen.choice([-1.0, 1.0], size=(nboot, pi.size)) * np.sqrt(
+            np.maximum(1.0 - pi, 0.0)
+        )
+        draws = beta + rad @ contrib.T
+        out["rademacher"] = tuple(np.percentile(draws, [2.5, 97.5], axis=0))
+
+        drawn = (gen.random((nboot, pi.size)) < pi).astype(float)
+        xi = (drawn - pi) / np.sqrt(pi)
+        dev = xi @ contrib.T
+        out["design"] = tuple(np.percentile(beta + dev, [2.5, 97.5], axis=0))
+
+        se_b = np.sqrt(np.einsum("bk,pk->bp", xi**2, contrib**2) + 1e-300)
+        t = dev / np.maximum(se_b, 1e-12)
+        lo_t, hi_t = np.percentile(t, [2.5, 97.5], axis=0)
+        out["studentized"] = (beta - hi_t * se, beta - lo_t * se)
+        return out
+
+    macros: dict = {}
+    for method, tag in (("pps", "Pps"), ("srs", "Srs")):
+        design = study.design(budget, method=method)
+        gen = np.random.default_rng(7)
+        covered: dict[str, list] = {}
+        for _ in range(reps):
+            sample = study.draw(design, random_state=gen, fixed_size=False)
+            if len(sample) == 0:
+                continue
+            for name, (lo, hi) in intervals(
+                sample, labels.loc[sample.items], gen
+            ).items():
+                covered.setdefault(name, []).append((truth >= lo) & (truth <= hi))
+        for name, hits in covered.items():
+            macros[f"Cov{tag}{name.capitalize()}"] = f"{float(np.mean(hits)):.2f}"
+    return macros
