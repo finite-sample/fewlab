@@ -167,6 +167,70 @@ def _as_frame(labels: pd.Series | pd.DataFrame, items: pd.Index) -> pd.DataFrame
     return aligned.astype(float)
 
 
+VARIANCES = ("poisson", "hajek", "balanced")
+
+
+def _design_covariance(
+    contributions: np.ndarray,
+    pi_s: np.ndarray,
+    variance: str,
+    auxiliaries: np.ndarray | None,
+) -> np.ndarray:
+    """Estimate the design covariance of `vec(B)` under the draw that happened.
+
+    The Poisson estimator sums squared contributions weighted by
+    `(1 - pi_j)`. It is exact for independent Bernoulli trials and conservative
+    for anything else, because it counts variation the actual design removed.
+
+    Fixing the sample size removes the variation in how many entities were
+    drawn, and the Hajek estimator subtracts it by centring each contribution on
+    a weighted mean of the others rather than on zero. Balancing removes more:
+    a cube draw holds the auxiliary totals near their population values, so the
+    part of a contribution the auxiliaries explain cannot vary either, and what
+    remains is the residual from regressing on them.
+
+    Args:
+        contributions: `(K, pq)` rows holding `vec(h_j d_j') / pi_j`.
+        pi_s: Delivered probabilities for the sampled entities.
+        variance: `"poisson"`, `"hajek"`, or `"balanced"`.
+        auxiliaries: `(K, p)` balancing variables `g_j / pi_j`, required by
+            `"balanced"`.
+
+    Returns:
+        The `(pq, pq)` estimated covariance.
+
+    Raises:
+        ValueError: If `variance` is unrecognized, or `"balanced"` is asked for
+            without auxiliaries.
+    """
+    k, d = contributions.shape
+    if variance == "poisson":
+        weights = 1.0 - pi_s
+        centred = contributions
+    elif variance in ("hajek", "balanced"):
+        if k < 2:
+            return np.zeros((d, d))
+        weights = (1.0 - pi_s) * k / (k - 1)
+        total = float(weights.sum())
+        if total <= 0:
+            return np.zeros((d, d))
+        if variance == "hajek":
+            centred = contributions - (weights @ contributions) / total
+        else:
+            if auxiliaries is None:
+                raise ValueError(
+                    'variance="balanced" needs the balancing auxiliaries the '
+                    "sampler used; draw the sample with fixed_size=True"
+                )
+            design = np.c_[np.ones(k), auxiliaries]
+            root = np.sqrt(weights)[:, None]
+            coef = np.linalg.lstsq(design * root, contributions * root, rcond=None)[0]
+            centred = contributions - design @ coef
+    else:
+        raise ValueError(f"variance must be one of {VARIANCES}, got {variance!r}")
+    return (centred * weights[:, None]).T @ centred
+
+
 def estimate(
     infl: Influence,
     sample: LabelSample,
@@ -176,6 +240,7 @@ def estimate(
     X: pd.DataFrame | None = None,
     proxy: pd.DataFrame | None = None,
     alpha: pd.Series | float = 1.0,
+    variance: str = "poisson",
 ) -> Estimate:
     """Estimate `B` from a realized label sample.
 
@@ -208,7 +273,14 @@ def estimate(
         proxy: `(m, q)` predictions for every entity in the frame, with the same
             columns as `labels`. Optional.
         alpha: Shrinkage applied to the sampled correction. The default of 1.0
-            is the unbiased estimator. See `shrink` before departing from it.
+            is the unbiased estimator. See `trim_alpha` before departing from
+            it.
+        variance: Which variance estimator to use. `"poisson"` is exact for an
+            independent Bernoulli draw and conservative otherwise, which is why
+            it is the safe default. `"hajek"` accounts for a fixed sample size,
+            and `"balanced"` also accounts for the auxiliaries a cube draw held
+            fixed; use them only when the sample was drawn that way, since on a
+            Poisson draw they understate.
 
     Returns:
         The estimate, its two variance components, and any bias incurred.
@@ -285,13 +357,12 @@ def estimate(
     # (h_j h_j') with v_j = alpha_j^2 (1-pi_j)/pi_j^2, the unbiased sample
     # estimator of alpha_j^2 (1-pi_j)/pi_j.
     var_w = alpha_s**2 * (1.0 - pi_s) / pi_s**2
-    design_cov = np.zeros((infl.n_features * q, infl.n_features * q))
-    for k in range(len(sampled)):
-        if var_w[k] <= 0:
-            continue
-        design_cov += var_w[k] * np.kron(
-            np.outer(D_s[k], D_s[k]), np.outer(H_s[:, k], H_s[:, k])
-        )
+    # Row k is vec(h_j d_j') / pi_j, the entity's contribution to the estimator,
+    # with columns stacked to match vec(B).
+    contributions = np.einsum("pk,kq->kqp", H_s, D_s).reshape(len(sampled), -1)
+    contributions = contributions / pi_s[:, None] * alpha_s[:, None]
+    auxiliaries = (infl.G[:, pos] / pi_s[None, :]).T
+    design_cov = _design_covariance(contributions, pi_s, variance, auxiliaries)
     design_var = np.clip(np.diag(design_cov), 0.0, None).reshape(q, infl.n_features).T
 
     features = (

@@ -284,3 +284,97 @@ def test_spending_more_shrinks_only_the_design_component(population) -> None:
     assert ratios[0] > ratios[-1], (
         f"design share of variance did not fall with budget: {ratios}"
     )
+
+
+VARIANCE_REPS = 900
+
+
+def _variance_ratios(study, labels, fixed_size: bool, reps: int) -> dict:
+    """Measure `E[v_hat] / Var(B_hat)` for each variance estimator.
+
+    Args:
+        study: The study.
+        labels: True labels.
+        fixed_size: Whether to draw with the cube method.
+        reps: Replicates.
+
+    Returns:
+        Median ratio per variance estimator; 1.0 is exactly right.
+    """
+    design = study.design(BUDGET)
+    rng = np.random.default_rng(21)
+    values: list[np.ndarray] = []
+    var: dict[str, list[np.ndarray]] = {"poisson": [], "hajek": [], "balanced": []}
+    for _ in range(reps):
+        sample = study.draw(design, random_state=rng, fixed_size=fixed_size)
+        if len(sample) == 0:
+            continue
+        obs = labels.loc[sample.items]
+        values.append(
+            estimate(study.influence, sample, obs).coefficients.to_numpy().ravel()
+        )
+        for name in var:
+            var[name].append(
+                estimate(study.influence, sample, obs, variance=name)
+                .design_se.to_numpy()
+                .ravel()
+                ** 2
+            )
+    truth = np.array(values).var(axis=0)
+    return {
+        name: float(np.median(np.array(v).mean(axis=0) / truth))
+        for name, v in var.items()
+    }
+
+
+def test_the_poisson_variance_is_exact_for_a_poisson_draw(population) -> None:
+    """The default has to be right on the design it is derived for."""
+    study, labels, _ = population
+    ratios = _variance_ratios(study, labels, fixed_size=False, reps=VARIANCE_REPS)
+    assert 0.9 < ratios["poisson"] < 1.1, ratios
+
+
+def test_the_poisson_variance_is_conservative_for_a_cube_draw(population) -> None:
+    """The package calls it conservative; measure that rather than assert it."""
+    study, labels, _ = population
+    ratios = _variance_ratios(study, labels, fixed_size=True, reps=VARIANCE_REPS // 2)
+    assert ratios["poisson"] > 1.3, (
+        f"the Poisson variance is no longer conservative under a cube draw "
+        f"({ratios['poisson']:.2f}); the documentation says it is"
+    )
+
+
+def test_the_balanced_variance_recovers_what_conservatism_costs(population) -> None:
+    """The reason to have it: a cube interval should not be twice as wide as it needs.
+
+    Accounting for the fixed size and the balancing auxiliaries should bring the
+    estimate near the truth. It lands slightly low, which the docstring says,
+    so the gate allows understatement but not by much.
+    """
+    study, labels, _ = population
+    ratios = _variance_ratios(study, labels, fixed_size=True, reps=VARIANCE_REPS // 2)
+    assert ratios["balanced"] < ratios["hajek"] < ratios["poisson"], ratios
+    assert 0.7 < ratios["balanced"] < 1.2, ratios
+
+
+def test_the_fixed_size_estimators_understate_a_poisson_draw(population) -> None:
+    """The falsification partner: using the wrong one has to be visibly wrong.
+
+    If `balanced` were quietly correct on a Bernoulli draw too, the distinction
+    the API asks users to make would be pointless, and the warning in the
+    docstring would be noise.
+    """
+    study, labels, _ = population
+    ratios = _variance_ratios(study, labels, fixed_size=False, reps=VARIANCE_REPS)
+    assert ratios["balanced"] < 0.7, (
+        f"the balanced variance no longer understates a Poisson draw "
+        f"({ratios['balanced']:.2f}), so the estimators are no longer distinct"
+    )
+
+
+def test_an_unknown_variance_estimator_is_refused(population) -> None:
+    """Silently falling back would change the reported uncertainty."""
+    study, labels, _ = population
+    sample = study.draw(study.design(BUDGET), random_state=22, fixed_size=False)
+    with pytest.raises(ValueError, match="variance must be one of"):
+        estimate(study.influence, sample, labels.loc[sample.items], variance="syg")

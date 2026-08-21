@@ -120,3 +120,67 @@ def loss_divergence(budget: int = 40, seed: int = 7) -> dict:
     a = set(study.scores(loss="coefficient").nlargest(budget).index)
     b = set(study.scores(loss="prediction").nlargest(budget).index)
     return {"LossDisagreementPct": f"{100 * (1 - len(a & b) / budget):.0f}"}
+
+
+def variance_comparison(reps: int = 1200, budget: int = 45, seed: int = 31) -> dict:
+    """Compare the three variance estimators against the realized spread.
+
+    Each is derived for a different draw, so each should be right on its own and
+    wrong on the others. Measuring that is the only way to say so honestly.
+
+    Args:
+        reps: Replicates for the Bernoulli draw; the cube draw uses half, being
+            slower.
+        budget: Labeling budget.
+        seed: Seed for the population.
+
+    Returns:
+        Median ratio of estimated to actual variance, per draw and estimator.
+    """
+    rng = np.random.default_rng(seed)
+    n, m = 300, 120
+    Z = rng.normal(size=(n, 2))
+    X = pd.DataFrame(np.c_[np.ones(n), Z], columns=["const", "x1", "x2"])
+    loadings = rng.normal(size=(m, 2))
+    popularity = np.exp(rng.normal(0, 1.3, size=m))
+    rate = np.exp(0.4 + Z @ loadings.T + np.log(popularity) - np.log(popularity).mean())
+    counts = pd.DataFrame(rng.poisson(rate), columns=[f"e{j}" for j in range(m)])
+
+    study = fewlab.Study(counts, X)
+    draw = rng.integers(0, 2, m)
+    labels = pd.DataFrame(
+        np.eye(2)[draw], index=study.influence.items, columns=["c0", "c1"]
+    )
+
+    design = study.design(budget)
+    out = {}
+    for fixed, tag, n_reps in ((False, "Poisson", reps), (True, "Cube", reps // 2)):
+        gen = np.random.default_rng(21)
+        values: list[np.ndarray] = []
+        var: dict[str, list[np.ndarray]] = {
+            "poisson": [],
+            "hajek": [],
+            "balanced": [],
+        }
+        for _ in range(n_reps):
+            sample = study.draw(design, random_state=gen, fixed_size=fixed)
+            if len(sample) == 0:
+                continue
+            obs = labels.loc[sample.items]
+            values.append(
+                fewlab.estimate(study.influence, sample, obs)
+                .coefficients.to_numpy()
+                .ravel()
+            )
+            for name in var:
+                var[name].append(
+                    fewlab.estimate(study.influence, sample, obs, variance=name)
+                    .design_se.to_numpy()
+                    .ravel()
+                    ** 2
+                )
+        actual = np.array(values).var(axis=0)
+        for name, v in var.items():
+            ratio = float(np.median(np.array(v).mean(axis=0) / actual))
+            out[f"Var{tag}{name.capitalize()}"] = f"{ratio:.2f}"
+    return out
