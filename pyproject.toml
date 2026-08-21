@@ -101,6 +101,9 @@ convention = "google"
 "docs/evaluate_*.py" = ["D", "N803", "N806", "T201", "ARG", "S101"]
 # A notebook prints its results; that is what a notebook is for.
 "*.ipynb" = ["T201"]
+# Standalone scripts run by hand against the private source panel. T201: the
+# table is the output. N803/N806: X, B and H are the names in the derivations.
+"benchmarks/**" = ["D", "N803", "N806", "T201", "S101"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["fewlab"]

@@ -11,7 +11,7 @@ repos:
     rev: v1.1.407
     hooks:
       - id: pyright
-        exclude: ^(docs|tests)/
+        exclude: ^(docs|tests|benchmarks)/
         additional_dependencies:
           - numpy
           - pandas
