@@ -16,6 +16,8 @@ contributing entity gets positive probability and reciprocal weight. Minimum
 standard error is the objective under it.
 """
 
+from importlib import metadata as _metadata
+
 from .covariate import ShareEffect, estimate_share_effect
 from .designs import (
     LabelDesign,
@@ -34,7 +36,14 @@ from .influence import (
 from .rowse import RowSEResult, row_se_min_labels
 from .study import Ranking, Study
 
-__version__ = "3.0.0"
+# Single source of truth is pyproject.toml; reading it back avoids a second
+# copy that nothing keeps in sync.
+try:
+    _installed_version = _metadata.version("fewlab")
+except _metadata.PackageNotFoundError:  # pragma: no cover - source checkout
+    _installed_version = "0.0.0.dev0"
+
+__version__ = _installed_version
 
 __all__ = [
     "Estimate",

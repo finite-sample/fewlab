@@ -65,7 +65,7 @@ from fewlab import Study
 
 study = Study.from_long(visits, features, unit="user", entity="domain", count="visits")
 
-design = study.design(budget=250)        # π_j = min(1, λ√(b_j/c_j))
+design = study.design(budget=250)  # π_j = min(1, λ√(b_j/c_j))
 sample = study.draw(design, random_state=0)
 
 labels = your_labeling_pipeline(sample.items)
