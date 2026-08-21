@@ -24,6 +24,7 @@ from .designs import (
     core_plus_tail,
     design_risk,
     poisson_pps,
+    robust_pps,
     simple_random,
 )
 from .estimator import Estimate, LabelSample, estimate, trim_alpha
@@ -35,6 +36,10 @@ from .influence import (
 )
 from .rowse import RowSEResult, row_se_min_labels
 from .study import Ranking, Study
+from .superpopulation import (
+    SuperpopulationEstimate,
+    estimate_superpopulation,
+)
 
 # Single source of truth is pyproject.toml; reading it back avoids a second
 # copy that nothing keeps in sync.
@@ -54,6 +59,7 @@ __all__ = [
     "RowSEResult",
     "ShareEffect",
     "Study",
+    "SuperpopulationEstimate",
     "__version__",
     "contribution_scores",
     "core_plus_tail",
@@ -61,8 +67,10 @@ __all__ = [
     "direction_spectrum",
     "estimate",
     "estimate_share_effect",
+    "estimate_superpopulation",
     "influence",
     "poisson_pps",
+    "robust_pps",
     "row_se_min_labels",
     "simple_random",
     "trim_alpha",

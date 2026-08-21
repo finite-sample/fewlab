@@ -19,6 +19,7 @@ from fewlab import (
     core_plus_tail,
     design_risk,
     poisson_pps,
+    robust_pps,
     simple_random,
 )
 from tests.fixtures import panel
@@ -133,3 +134,68 @@ def test_the_certainty_core_is_produced_by_the_cap_not_chosen(scores) -> None:
     assert len(certain) > 0
     # Everything in the core outscores everything outside it.
     assert scores[certain].min() >= scores.drop(certain).max()
+
+
+def test_the_robust_design_reduces_to_the_plain_one_at_full_prevalence(
+    scores,
+) -> None:
+    """A proved identity, checked to catch implementation error rather than to
+    establish the result.
+
+    When every entity may be positive, `M = m`, and the sum of the `m` largest
+    terms is the whole sum. The robust program is then literally the plain one,
+    so the two worst-case risks must agree to numerical precision, not merely
+    be close.
+    """
+    m = int((scores > 0).sum())
+    plain = poisson_pps(scores, 40, pi_min=1e-4)
+    robust = robust_pps(scores, 40, prevalence=1.0)
+
+    def worst(design) -> float:
+        t = ((1 - design.probabilities) / design.probabilities * scores).to_numpy()
+        return float(np.sort(t)[::-1][:m].sum())
+
+    assert worst(robust) == pytest.approx(worst(plain), rel=1e-6)
+
+
+@pytest.mark.parametrize("prevalence", [0.02, 0.1, 0.5])
+def test_the_robust_design_wins_on_the_case_it_optimizes(prevalence, scores) -> None:
+    """It minimizes worst-case risk, so nothing else may beat it there."""
+    m = int((scores > 0).sum())
+    n_pos = max(1, int(np.ceil(prevalence * m)))
+    plain = poisson_pps(scores, 40, pi_min=1e-4)
+    robust = robust_pps(scores, 40, prevalence=prevalence)
+
+    def worst(design) -> float:
+        t = ((1 - design.probabilities) / design.probabilities * scores).to_numpy()
+        return float(np.sort(t)[::-1][:n_pos].sum())
+
+    assert worst(robust) <= worst(plain) + 1e-6
+
+
+def test_the_robust_design_loses_on_the_case_it_does_not_optimize(scores) -> None:
+    """The falsification partner: insurance has to cost something.
+
+    If the robust design were also better on the all-positive risk, it would be
+    dominating the optimum of that problem, which is impossible. A test that
+    only checked the worst case would not notice an implementation that had
+    quietly stopped being robust at all.
+    """
+    plain = poisson_pps(scores, 40, pi_min=1e-4)
+    robust = robust_pps(scores, 40, prevalence=0.02)
+    assert robust.risk > plain.risk
+
+
+@pytest.mark.parametrize("prevalence", [0.05, 0.3])
+def test_the_robust_design_spends_its_budget(prevalence, scores) -> None:
+    """Convexity buys nothing if the constraint is not met."""
+    design = robust_pps(scores, 40, prevalence=prevalence)
+    assert design.budget == pytest.approx(40, abs=1e-6)
+    assert (design.probabilities[scores > 0] > 0).all()
+
+
+def test_an_impossible_prevalence_is_refused(scores) -> None:
+    """A fraction outside (0, 1] describes no population."""
+    for bad in (0.0, -0.1, 1.5):
+        with pytest.raises(ValueError, match="prevalence"):
+            robust_pps(scores, 40, prevalence=bad)

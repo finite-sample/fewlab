@@ -403,3 +403,172 @@ def simple_random(scores: pd.Series, budget: int) -> LabelDesign:
         method="simple_random",
         diagnostics={"n_contributing": m},
     )
+
+
+def _hinge_optimum(
+    w: np.ndarray, c: np.ndarray, lam: float, tau: float, pi_min: float
+) -> np.ndarray:
+    """Minimize the per-entity Lagrangian of the robust program.
+
+    For fixed `tau` and multiplier `lam` the program separates, and entity `j`
+    solves `min_p (w_j/p - w_j - tau)_+ + lam c_j p`. The hinge turns off at
+    `s_j = w_j / (w_j + tau)`, above which the objective only increases, so the
+    optimum is either `s_j` or the stationary point `sqrt(w_j / (lam c_j))` of
+    the active branch, whichever value is smaller.
+
+    Args:
+        w: Label-free contributions `h_j' W h_j`.
+        c: Per-entity costs.
+        lam: Budget multiplier.
+        tau: Epigraph variable.
+        pi_min: Lower clip.
+
+    Returns:
+        The minimizing probabilities.
+    """
+    safe = w / (w + tau) if tau > 0 else np.ones_like(w)
+    interior = np.sqrt(w / (lam * c))
+    pi = np.minimum(interior, safe)
+    active = interior < safe
+    value_interior = 2.0 * np.sqrt(w * lam * c) - w - tau
+    value_safe = lam * c * safe
+    pi = np.where(active & (value_safe <= value_interior), safe, pi)
+    return np.clip(pi, pi_min, 1.0)
+
+
+def _budget_solve(
+    w: np.ndarray, c: np.ndarray, tau: float, budget: float, pi_min: float
+) -> np.ndarray:
+    """Find the multiplier that exhausts the budget at a given `tau`.
+
+    Args:
+        w: Label-free contributions.
+        c: Per-entity costs.
+        tau: Epigraph variable.
+        budget: Total budget.
+        pi_min: Lower clip.
+
+    Returns:
+        Probabilities spending the budget.
+    """
+    lo, hi = 1e-12, 1e12
+    for _ in range(200):
+        lam = float(np.sqrt(lo * hi))
+        if float((c * _hinge_optimum(w, c, lam, tau, pi_min)).sum()) > budget:
+            lo = lam
+        else:
+            hi = lam
+    return _hinge_optimum(w, c, hi, tau, pi_min)
+
+
+def robust_pps(
+    scores: pd.Series,
+    budget: float,
+    *,
+    prevalence: float,
+    cost: pd.Series | np.ndarray | float | None = None,
+    pi_min: float = 1e-4,
+) -> LabelDesign:
+    """Build the design that minimizes worst-case risk under a prevalence cap.
+
+    `poisson_pps` needs the squared label norms, which for a binary trait means
+    knowing which entities carry it. When that is unknown but the trait is known
+    to be rare, the worst case is tractable. Suppose at most a fraction `alpha`
+    of entities are positive, so at most `M = ceil(alpha m)` of them, and write
+    `t_j = (1 - pi_j)/pi_j * w_j` for the label-free contribution. Then
+
+        max over label configurations of the risk = sum of the M largest t_j,
+
+    since an adversary spends its `M` positives on the largest terms. That
+    maximum is convex in `pi`, despite being a maximum over a combinatorial set,
+    by the epigraph identity
+
+        sum of the M largest t = min over tau of [ M tau + sum_j (t_j - tau)_+ ],
+
+    a minimum of jointly convex functions. Minimizing it under the budget is
+    therefore a convex program, solved here by bisecting the budget multiplier
+    inside a golden-section search on `tau`.
+
+    Two consequences follow in a line each and both are checked by the test
+    suite rather than assumed. At `alpha = 1` the sum of the `m` largest terms
+    is the whole sum, so the program becomes `poisson_pps` with unit label
+    norms and returns the same design. And on the worst case this design is
+    never beaten by `poisson_pps`, since it minimizes exactly that quantity;
+    it is beaten on the average case, which is what the insurance costs.
+
+    Args:
+        scores: Label-free contributions `w_j = h_j' W h_j`, from
+            `contribution_scores` with the default unit label norms.
+        budget: Total labeling budget.
+        prevalence: Upper bound `alpha` on the fraction of entities carrying the
+            trait, in `(0, 1]`.
+        cost: Per-entity labeling cost, or None for uniform.
+        pi_min: Lower clip. Unlike `poisson_pps`, a small positive floor is the
+            default here, because the worst-case objective is flat in entities
+            the adversary will not choose and so nothing else keeps their
+            probabilities away from zero.
+
+    Returns:
+        The design, with the fitted `tau` and the worst-case risk among its
+        diagnostics.
+
+    Raises:
+        ValueError: If `prevalence` is outside `(0, 1]` or the budget is not
+            positive.
+
+    Examples:
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from fewlab import robust_pps
+        >>> w = pd.Series(np.exp(np.linspace(0, 4, 200)))
+        >>> design = robust_pps(w, budget=40, prevalence=0.05)
+        >>> round(design.budget, 4)
+        40.0
+        >>> design.diagnostics["n_positive"]
+        10
+    """
+    if not 0 < prevalence <= 1:
+        raise ValueError(f"prevalence must be in (0, 1], got {prevalence}")
+    if budget <= 0:
+        raise ValueError(f"budget must be positive, got {budget}")
+
+    w = np.maximum(scores.to_numpy(dtype=float), 0.0)
+    c = (
+        np.ones_like(w)
+        if cost is None
+        else np.broadcast_to(np.asarray(cost, dtype=float), w.shape).astype(float)
+    )
+    m = int((w > 0).sum())
+    n_positive = max(1, int(np.ceil(prevalence * m)))
+
+    def worst_case(tau: float) -> tuple[float, np.ndarray]:
+        pi = _budget_solve(w, c, tau, budget, pi_min)
+        t = np.where(pi > 0, w / np.maximum(pi, 1e-300) - w, np.inf)
+        return n_positive * tau + float(np.maximum(t - tau, 0.0).sum()), pi
+
+    lo, hi = 0.0, float(w.max() / max(pi_min, 1e-6)) if w.size else 1.0
+    for _ in range(120):
+        a = lo + 0.382 * (hi - lo)
+        b = lo + 0.618 * (hi - lo)
+        if worst_case(a)[0] <= worst_case(b)[0]:
+            hi = b
+        else:
+            lo = a
+    tau = 0.5 * (lo + hi)
+    _, pi = worst_case(tau)
+
+    probabilities = pd.Series(pi, index=scores.index, name="pi")
+    t = np.where(pi > 0, w / np.maximum(pi, 1e-300) - w, 0.0)
+    return LabelDesign(
+        probabilities=probabilities,
+        scores=scores,
+        risk=design_risk(scores, probabilities),
+        method="robust_pps",
+        diagnostics={
+            "prevalence": prevalence,
+            "n_positive": n_positive,
+            "tau": tau,
+            "worst_case_risk": float(np.sort(t)[::-1][:n_positive].sum()),
+            "n_certainty": int((pi >= CERTAINTY).sum()),
+        },
+    )
