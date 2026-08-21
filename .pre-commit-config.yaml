@@ -27,3 +27,5 @@ repos:
       - id: check-case-conflict
       - id: check-docstring-first
       - id: check-added-large-files
+        # The hashed YG extract is 1.1 MB and is the point of benchmarks/data.
+        args: [--maxkb=2048]

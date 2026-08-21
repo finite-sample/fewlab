@@ -116,6 +116,60 @@ def run(
     return out
 
 
+def frontier(
+    study: fewlab.Study,
+    labels: pd.DataFrame,
+    B: np.ndarray,
+    budgets: list[int],
+    reps: int,
+) -> pd.DataFrame:
+    """Trace the bias-variance frontier of shrinking the Horvitz-Thompson weight.
+
+    The same entities are labeled in every row; only the weight differs. At
+    `alpha = 1` the weight is `1/pi_j` and the estimator is unbiased. At
+    `alpha = 0` the weight is one, which is what zero-filling the unlabeled
+    entities amounts to.
+
+    Args:
+        study: The study.
+        labels: True labels.
+        B: The finite-population truth.
+        budgets: Budgets to trace.
+        reps: Replicates per point.
+
+    Returns:
+        One row per budget and shrinkage level.
+    """
+    rows = []
+    for budget in budgets:
+        design = study.design(budget)
+        rng = np.random.default_rng(4242 + budget)
+        samples = [
+            study.draw(design, random_state=rng, fixed_size=False) for _ in range(reps)
+        ]
+        for alpha in (0.0, 0.25, 0.5, 0.75, 0.9, 1.0):
+            a = 1.0 if alpha == 1.0 else alpha + (1.0 - alpha) * design.probabilities
+            err = np.array(
+                [
+                    fewlab.estimate(
+                        study.influence, s, labels.loc[s.items], alpha=a
+                    ).coefficients.to_numpy()
+                    - B
+                    for s in samples
+                ]
+            )
+            rows.append(
+                {
+                    "budget": budget,
+                    "alpha": alpha,
+                    "bias": float(np.linalg.norm(err.mean(axis=0))),
+                    "sd": float(np.sqrt(err.var(axis=0).sum())),
+                    "rmse": float(np.sqrt((err**2).sum(axis=(1, 2)).mean())),
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def main() -> None:
     """Run the benchmark and print the table."""
     ap = argparse.ArgumentParser()
@@ -141,11 +195,25 @@ def main() -> None:
     )
     pd.set_option("display.width", 140)
     print(table.to_string(index=False))
+    curve = frontier(study, labels, B, [250, 1000, 4000], reps=min(args.reps, 200))
+    print("\nShrinkage frontier (same entities labeled; only the weight differs)")
+    print(curve.to_string(index=False))
+
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         table.to_csv(args.out, index=False)
+        curve.to_csv(args.out.parent / "shrinkage_frontier.csv", index=False)
         (args.out.parent / "truth.json").write_text(
-            json.dumps({"frobenius_norm": float(np.linalg.norm(B))}, indent=2)
+            json.dumps(
+                {
+                    "frobenius_norm": float(np.linalg.norm(B)),
+                    "n_units": int(study.counts.shape[0]),
+                    "n_entities": int(study.influence.n_items),
+                    "density": float(study.counts.density),
+                    "measures": MEASURES,
+                },
+                indent=2,
+            )
         )
 
 

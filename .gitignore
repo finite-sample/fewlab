@@ -208,3 +208,13 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 .DS_Store
+
+# LaTeX build products. The manuscript source is tracked; its output is not.
+ms/*.aux
+ms/*.bbl
+ms/*.blg
+ms/*.fdb_latexmk
+ms/*.fls
+ms/*.out
+ms/*.pdf
+ms/*.synctex.gz

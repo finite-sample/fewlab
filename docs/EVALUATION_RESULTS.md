@@ -1,179 +1,183 @@
-# Efficiency Evaluation: Random vs. FewLab Methods
+# Evaluation
 
-This document summarizes the evaluation of efficiency gains when using FewLab's optimal sampling methods compared to random sampling.
+Probability sampling proportional to influence recovers the complete-label
+regression coefficients about nine times more accurately than spending the same
+budget at random, and the gap holds at every budget tested. Labeling 250 of
+34,078 domains gives a root mean squared error of 5.97 against a coefficient
+matrix whose own size is 11.1, with no bias and 94.2% coverage of a nominal 95%
+interval.
 
-## Executive Summary
+![Three panels: error, efficiency relative to simple random sampling, and
+interval coverage, each against the number of domains labeled, for four
+designs.](results/yg_benchmark.png)
 
-**Key Finding**: FewLab's optimal sampling methods provide **1.14x efficiency gains** (14% variance reduction) compared to random sampling in realistic scenarios with heterogeneous count distributions.
+## What the benchmark measures
 
-**Budget Sensitivity**: The efficiency gains are **most pronounced at moderate budgets** (10% of items), reaching up to **9.2% improvement**, and diminish as budgets increase.
+The population is the YouGov Pulse browsing panel: 1,132 US adults metered for
+June 2022, and the 34,078 domains whose Blacklight tracking scan succeeded. The
+frame is 0.27% dense.
 
-## Evaluation Setup
+Every domain's label is known, which is the point. The complete-label
+coefficient matrix
 
-### Simulation Configuration
+```
+B = (X'X)⁻¹X'VA
+```
 
-- **Units (e.g., users)**: 500-1000
-- **Items (e.g., products)**: 200-300
-- **Features**: 5-6 covariates
-- **Simulations**: 100-150 runs per configuration
-- **Key innovation**: Heterogeneous count structure with variance across items (mimicking real-world scenarios where some items are much more popular than others)
+is therefore computable exactly, and each design is scored against that same
+fixed target. The outcome `Y = VA` is the published per-user tracker exposure
+rate, and the regression is the published specification: exposure on gender,
+race, education and age group. Running that regression on all 34,078 labels
+reproduces the four coefficients the manuscript reports to within 0.004, against
+its own replication tolerance of 0.02, which is how we know the pipeline computes
+the same quantity the paper does.
 
-### Methods Compared
+The estimand has two label classes, ad trackers and third-party cookies, so `B`
+is 13 by 2 and `‖B‖ = 11.1`. Each row of the table below is 300 independent
+Poisson draws from the same finite population, so the spread is design variance
+and nothing else.
 
-1. **Random Sampling** (baseline)
-2. **Deterministic A-optimal** (`items_to_label`)
-3. **Balanced Sampling** (`balanced_fixed_size`)
-4. **Hybrid Core+Tail** (`core_plus_tail`)
-5. **Adaptive Hybrid** (`adaptive_core_tail`)
+Reproduce it with:
 
-### Metrics
-
-- **Bias**: Mean error in coefficient estimates
-- **Variance**: Variance of estimation error across simulations
-- **RMSE**: Root mean squared error
-- **Relative Efficiency**: Variance_random / Variance_method
-- **Computational Time**: Algorithm runtime
+```bash
+python benchmarks/run_yg_benchmark.py --data benchmarks/data --out docs/results/yg_benchmark.csv
+```
 
 ## Results
 
-### Main Evaluation (Fixed Budget)
+| budget | design | RMSE | RMSE / SRS | bias | coverage | certainty core |
+|---|---|---|---|---|---|---|
+| 100 | simple random | 121 | 1.000 | 8.7 | 0.838 | 0 |
+| 100 | core + uniform tail | 44.1 | 0.365 | 2.8 | 0.868 | 41 |
+| 100 | PPS | 10.6 | 0.088 | 0.77 | 0.938 | 6 |
+| 100 | PPS, known label norms | 3.99 | 0.033 | 0.23 | 0.954 | 7 |
+| 250 | simple random | 52.9 | 1.000 | 2.6 | 0.869 | 0 |
+| 250 | core + uniform tail | 25.6 | 0.483 | 1.2 | 0.912 | 105 |
+| 250 | PPS | 5.97 | 0.113 | 0.24 | 0.942 | 26 |
+| 250 | PPS, known label norms | 2.13 | 0.040 | 0.14 | 0.949 | 38 |
+| 500 | simple random | 40.0 | 1.000 | 1.2 | 0.868 | 0 |
+| 500 | core + uniform tail | 15.2 | 0.379 | 0.96 | 0.927 | 242 |
+| 500 | PPS | 3.86 | 0.096 | 0.23 | 0.945 | 68 |
+| 500 | PPS, known label norms | 1.19 | 0.030 | 0.072 | 0.951 | 111 |
+| 1,000 | simple random | 26.4 | 1.000 | 1.5 | 0.872 | 0 |
+| 1,000 | core + uniform tail | 7.02 | 0.266 | 0.47 | 0.937 | 552 |
+| 1,000 | PPS | 2.29 | 0.087 | 0.13 | 0.945 | 185 |
+| 1,000 | PPS, known label norms | 0.604 | 0.023 | 0.028 | 0.950 | 311 |
+| 2,000 | simple random | 19.1 | 1.000 | 0.79 | 0.877 | 0 |
+| 2,000 | core + uniform tail | 3.10 | 0.163 | 0.15 | 0.943 | 1,176 |
+| 2,000 | PPS | 1.18 | 0.062 | 0.047 | 0.952 | 550 |
+| 2,000 | PPS, known label norms | 0.268 | 0.014 | 0.017 | 0.947 | 791 |
 
-**Configuration**: K=40 items from 200 (20% budget), heterogeneous counts
+RMSE and bias are Frobenius norms of the error in `B`, in the same units as `B`
+itself, whose norm is 11.1. Coverage is the share of nominal 95% intervals
+containing the truth, pooled over the 26 coefficients. The certainty core is the
+number of domains the cap at probability one selects, which the design produces
+rather than the user choosing.
 
-| Method | Variance | Rel. Efficiency | Gain | Time (ms) |
-|--------|----------|-----------------|------|-----------|
-| Random (baseline) | 2.5273 | 1.00x | 0% | 0.1 |
-| Deterministic A-opt | 2.1928 | **1.14x** | **+13.9%** | 1.8 |
-| Balanced | 2.1933 | 1.14x | +13.9% | 74.6 |
-| Adaptive Hybrid | 2.1930 | 1.14x | +13.9% | 15.9 |
-| Hybrid Core+Tail | 2.1927 | 1.14x | +13.9% | 28.6 |
+Four things in that table are worth reading.
 
-**Interpretation**:
-- All FewLab methods achieve approximately **14% variance reduction** compared to random sampling
-- Deterministic A-optimal is **fastest** (1.8ms) with same efficiency
-- All methods perform similarly in terms of variance reduction
-- The efficiency gain is **consistent across all coefficients**
+Every design is unbiased, including the bad one. Simple random sampling has bias
+2.6 at budget 250 against a Monte Carlo standard error of about 3.1, so it is not
+distinguishable from zero. The designs differ in variance, not in bias, which is
+what a probability design guarantees.
 
-### Budget Sensitivity Analysis
+The efficiency ratio is flat in budget. PPS sits between 0.062 and 0.113 of the
+random-sampling error across a twentyfold range of budgets, so the gain is a
+property of the design rather than a lucky operating point.
 
-**Configuration**: Varying budgets from 5% to 40% of items (K=15 to 120 from 300 items)
+Intervals from a good design cover and intervals from a bad one do not. Simple
+random sampling covers at 0.84 to 0.88 against a nominal 0.95. The cause is not a
+broken variance estimator: over 4,000 replicates the estimator is unbiased for the
+true variance to within 1%. What breaks is the normal approximation. Under simple
+random sampling a handful of very high influence domains either land in the sample
+or do not, which leaves the estimator skewed at ±1.6 and its variance estimate
+swinging by 200% of its own mean. Under PPS the skew is 0.1 and the variance
+estimate varies by 30%. The good design does not only shrink the interval, it is
+what makes the interval mean anything.
 
-| Budget | % of Items | Random Var | Optimal Var | Rel. Efficiency | Gain |
-|--------|-----------|------------|-------------|-----------------|------|
-| 15 | 5% | 2.203 | 2.155 | 1.02x | **+1.8%** |
-| 30 | 10% | 2.600 | 2.348 | 1.09x | **+9.2%** |
-| 45 | 15% | 2.238 | 2.117 | 1.07x | **+6.6%** |
-| 60 | 20% | 2.260 | 2.203 | 1.03x | **+2.5%** |
-| 90 | 30% | 2.138 | 2.103 | 1.02x | **+1.7%** |
-| 120 | 40% | 2.499 | 2.482 | 1.01x | **+0.6%** |
+Knowing the label norms is worth another factor of three. The two PPS rows differ
+only in whether `a_j'a_j` is known. Blacklight labels are counts, not one-hot
+class indicators, and their squared norms run from a median of 10 to a maximum of
+72,262, so the shortcut that makes `b_j` exact for a mutually exclusive taxonomy
+does not apply here. That gap is what a pilot sample or a proxy is worth on this
+population.
 
-**Key Insights**:
+## Buying bias on purpose
 
-1. **Peak efficiency at moderate budgets**: Maximum gains (~9%) occur at **10% budget**
-2. **Diminishing returns at high budgets**: Gains drop to <1% when sampling >30% of items
-3. **Non-monotonic pattern**: Efficiency gains don't follow a simple monotonic pattern
-4. **Practical implication**: FewLab methods are most valuable when **resources are constrained**
+Shrinking the weight by `α` trades bias for variance. The same domains are
+labeled in every row below; only the weight differs. At `α = 1` the weight is
+`1/π_j`. At `α = 0` the weight is 1, which is what zero-filling unlabeled
+entities amounts to.
 
-## Why Heterogeneity Matters
+| budget | α | bias | sd | RMSE |
+|---|---|---|---|---|
+| 250 | 0.00 | 5.86 | 1.01 | 5.95 |
+| 250 | 0.25 | 4.38 | 2.01 | 4.82 |
+| 250 | 0.50 | 2.91 | 3.29 | **4.39** |
+| 250 | 0.75 | 1.44 | 4.62 | 4.84 |
+| 250 | 0.90 | 0.579 | 5.43 | 5.46 |
+| 250 | 1.00 | 0.245 | 5.97 | 5.97 |
+| 1,000 | 0.00 | 3.72 | 0.599 | 3.76 |
+| 1,000 | 0.25 | 2.79 | 0.943 | 2.95 |
+| 1,000 | 0.50 | 1.87 | 1.38 | 2.32 |
+| 1,000 | 0.75 | 0.947 | 1.83 | **2.06** |
+| 1,000 | 0.90 | 0.409 | 2.12 | 2.16 |
+| 1,000 | 1.00 | 0.159 | 2.31 | 2.31 |
+| 4,000 | 0.00 | 1.53 | 0.188 | 1.55 |
+| 4,000 | 0.25 | 1.15 | 0.260 | 1.18 |
+| 4,000 | 0.50 | 0.772 | 0.349 | 0.848 |
+| 4,000 | 0.75 | 0.392 | 0.446 | 0.594 |
+| 4,000 | 0.90 | 0.165 | 0.506 | **0.532** |
+| 4,000 | 1.00 | 0.0331 | 0.546 | 0.547 |
 
-The efficiency gains depend critically on the **heterogeneity of the count distribution**:
+Bold marks the smallest error in each block. The optimum is interior and moves
+toward 1 as the budget grows: shrinkage cuts mean squared error by 26% at 250
+labels, 11% at 1,000, and 3% at 4,000. Regularization helps most where the
+variance is worst, which is what regularization does.
 
-- **Homogeneous counts** (all items equally popular): ~0.4% gain
-- **Heterogeneous counts** (realistic variance in popularity): ~14% gain
+Two cautions. The optimal `α` depends on the truth you are trying to estimate, so
+it cannot be read off in advance; the bias term is estimable from the sample, but
+that plug-in is itself noisy. And `α = 0` is never optimal at any budget here,
+with a bias running from 14% to 53% of the size of `B`. Dropping the unlabeled
+entities is a real point on the frontier, just never a good one.
 
-This is because optimal methods can **leverage the information structure** by:
-1. Selecting items with high variance across units
-2. Weighting items by their regression influence
-3. Balancing statistical leverage across features
+## Fixed-size draws are covered conservatively
 
-## Recommendations
+The reported variance is the Poisson expression `Σ (1−π_j)/π_j · b_j`, which is
+exact for independent Bernoulli draws. Fixing the sample size and balancing on the
+influence totals both remove variation that expression still counts, so a cube
+draw has a smaller true variance than the number reported. Measured on a synthetic
+panel, the reported standard error exceeds the actual spread by 18% to 43%, and
+coverage runs 0.96 to 0.99 against a nominal 0.95. Intervals from
+`draw(fixed_size=True)` are therefore conservative rather than wrong.
 
-### When to Use FewLab Methods
+## What the previous evaluation measured
 
-✅ **Use FewLab when**:
-- Budget is **10-20% of available items**
-- Items have **heterogeneous distribution** across units
-- Accurate coefficient estimates are **critical**
-- Moderate computational overhead is acceptable (15-75ms)
+Versions up to 2.0 reported a 1.14 times efficiency gain, a 9.2% gain at moderate
+budgets, and a roughly 33% reduction in standard errors. All three have been
+withdrawn.
 
-⚠️ **Random sampling is fine when**:
-- Budget is **>30% of items**
-- Items are relatively **homogeneous**
-- Speed is paramount (<1ms requirement)
-- Simplicity is valued over small efficiency gains
+The 1.14 figure was the mean of five per-coefficient ratios: 1.6972, 0.99993,
+1.00016, 1.00026 and 0.99941. Four of those are noise at ±0.05%, and their mean
+with the fifth is 1.1394. The accompanying text claimed the gain was consistent
+across all coefficients; the results file in the same directory showed it was one
+intercept.
 
-### Method Selection Guide
+The reason nothing else moved is that the simulation could not have detected a
+difference. Its counts were generated as activity times popularity, a rank-one
+mean, so every entity's influence vector pointed the same way. The normalized
+influence matrix had singular values 1.000, 0.001, 0.000, 0.000. On such a
+population every criterion ranks entities identically and every method selects the
+same set, which is why all four methods reported errors agreeing to four
+significant figures. The simulation also drew a `beta_true`, never used it to
+generate labels, counts or outcomes, and then measured distance to it, which added
+roughly 2.25 of irrelevant variance to every reported number.
 
-| Method | Best For | Speed | Complexity |
-|--------|----------|-------|------------|
-| **Deterministic A-opt** | Speed + efficiency | ★★★★★ (1.8ms) | Low |
-| **Adaptive Hybrid** | Automated tuning | ★★★★☆ (16ms) | Low |
-| **Hybrid Core+Tail** | Custom tail fraction | ★★★☆☆ (29ms) | Medium |
-| **Balanced** | Maximum balance | ★★☆☆☆ (75ms) | Medium |
+The 33% figure cited a notebook that imported the package only to print its
+version number, never called a selection function, subsampled rows rather than
+entities, and reported ratios averaging 1.00 in its own stored output, one of them
+below 1.
 
-**Recommendation**: Start with **Deterministic A-optimal** for its speed and simplicity. All methods perform similarly in terms of efficiency.
-
-## Computational Cost vs. Benefit
-
-At typical problem sizes (500 units × 300 items, K=30):
-- **Random**: 0.1ms → No gain
-- **Deterministic A-opt**: 2ms → **9% efficiency gain**
-- **Adaptive Hybrid**: 16ms → **9% efficiency gain**
-
-**ROI**: Even the slowest method (Balanced at 75ms) provides excellent value:
-- 75ms overhead → 9% variance reduction
-- In a typical survey with 100 follow-up analyses, this saves ~9 equivalent samples
-
-## Reproducing Results
-
-### Run Main Evaluation
-```bash
-python examples/evaluate_random_vs_methods.py
-```
-
-Outputs:
-- `examples/simulation_results.csv`: Detailed results
-- `examples/efficiency_comparison.png`: Variance and efficiency plots
-- `examples/average_metrics.png`: Average metrics bar charts
-
-### Run Budget Sensitivity Analysis
-```bash
-python examples/evaluate_budget_sensitivity.py
-```
-
-Outputs:
-- `examples/budget_sensitivity_results.csv`: Detailed results by budget
-- `examples/budget_sensitivity.png`: Efficiency gains vs. budget plots
-
-## Technical Details
-
-### Estimation Procedure
-
-For each method:
-1. Sample K items using the method
-2. Compute Horvitz-Thompson weights (1/π_j)
-3. Estimate per-unit shares: ŷ_i = (1/T_i) Σ_j w_j a_j C_ij
-4. Regress X on ŷ to estimate coefficients β̂
-5. Compare β̂ to true β across simulations
-
-### Metrics Computation
-
-- **Bias**: E[β̂ - β]
-- **Variance**: Var[β̂ - β]
-- **RMSE**: √E[(β̂ - β)²]
-- **Relative Efficiency**: Var_random / Var_method
-
-## References
-
-- FewLab documentation: https://finite-sample.github.io/fewlab/
-- Deville & Särndal (1992): Calibration estimators in survey sampling
-- Fuller (2009): Sampling Statistics, Ch. 6 on optimal design
-
-## Files
-
-- `evaluate_random_vs_methods.py`: Main evaluation script
-- `evaluate_budget_sensitivity.py`: Budget sensitivity analysis
-- `EVALUATION_RESULTS.md`: This document
-- `simulation_results.csv`: Detailed results
-- `budget_sensitivity_results.csv`: Budget sensitivity results
-- `*.png`: Visualization plots
+`Study.diagnostics["direction_spectrum"]` now reports the degeneracy that hid the
+first problem, and the benchmark asserts on it, so a population that cannot
+distinguish designs fails the harness instead of flattering it.
