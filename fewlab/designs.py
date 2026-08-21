@@ -293,12 +293,21 @@ def core_plus_tail(scores: pd.Series, budget: int) -> LabelDesign:
         >>> import numpy as np
         >>> import pandas as pd
         >>> from fewlab import core_plus_tail
-        >>> b = pd.Series(np.arange(1, 101, dtype=float)[::-1] ** 3)
+        >>> b = pd.Series(1.0 / np.arange(1, 101, dtype=float) ** 2)
         >>> design = core_plus_tail(b, budget=20)
-        >>> design.diagnostics["core_size"] > 0
-        True
+        >>> design.diagnostics["core_size"]
+        10
         >>> round(design.budget, 6)
         20.0
+
+        A certainty core is not automatic. It appears only when the head is
+        concentrated enough that `b_{H+1}` exceeds the average remaining
+        contribution; on a population that decays more gently the whole budget
+        goes to the tail, and the design says so rather than forcing a core.
+
+        >>> gentle = pd.Series(np.arange(1, 101, dtype=float)[::-1] ** 3)
+        >>> core_plus_tail(gentle, budget=20).diagnostics["core_size"]
+        0
     """
     if int(budget) != budget or budget <= 0:
         raise ValueError(f"budget must be a positive integer, got {budget}")

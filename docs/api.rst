@@ -1,45 +1,69 @@
 API Reference
 =============
 
-This page contains the complete API reference for fewlab.
+The workflow keeps three things apart, and the boundaries are the point: a
+ranking of entities by importance, a probability design over them, and a
+realized draw. Only the last can be estimated from.
 
-Main Functions
---------------
+Study
+-----
 
-.. automodule:: fewlab
+.. automodule:: fewlab.study
    :members:
-   :undoc-members:
-   :show-inheritance:
-   :no-index:
-
-Core Module
------------
-
-.. automodule:: fewlab.core
-   :members:
-   :undoc-members:
    :show-inheritance:
 
-Selection Module
-----------------
+Influence
+---------
 
-.. automodule:: fewlab.selection
+.. automodule:: fewlab.influence
    :members:
-   :undoc-members:
    :show-inheritance:
 
-Balanced Sampling
+Designs
+-------
+
+.. automodule:: fewlab.designs
+   :members:
+   :show-inheritance:
+
+Estimation
+----------
+
+.. automodule:: fewlab.estimator
+   :members:
+   :show-inheritance:
+
+Labels as covariates
+--------------------
+
+.. automodule:: fewlab.covariate
+   :members:
+   :show-inheritance:
+
+Counts
+------
+
+.. automodule:: fewlab.counts
+   :members:
+   :show-inheritance:
+
+Balanced sampling
 -----------------
 
-.. automodule:: fewlab.balanced
+.. automodule:: fewlab.cube
    :members:
-   :undoc-members:
    :show-inheritance:
 
-Row Standard Error Minimization
---------------------------------
+Calibration
+-----------
+
+.. automodule:: fewlab.calibration
+   :members:
+   :show-inheritance:
+
+Fewest labels for a fixed standard error
+----------------------------------------
 
 .. automodule:: fewlab.rowse
    :members:
-   :undoc-members:
    :show-inheritance:

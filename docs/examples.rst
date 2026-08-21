@@ -1,232 +1,148 @@
 Examples
 ========
 
-This page contains practical examples of using fewlab in different scenarios.
+Every block runs as a doctest.
 
-Complete Interactive Demo
--------------------------
+A browsing panel
+----------------
 
-For a comprehensive demonstration with real-world performance analysis, run our
-**interactive Jupyter notebook** (`docs/fewlab_demo_colab.ipynb
-<https://github.com/finite-sample/fewlab/blob/main/docs/fewlab_demo_colab.ipynb>`_):
+The motivating case. Rows are panelists, columns are websites, and a website's
+category costs money to determine once and then applies to everyone who visited
+it.
 
-|Colab| **Run in Google Colab** for an interactive experience
+.. doctest::
 
-.. |Colab| image:: https://colab.research.google.com/assets/colab-badge.svg
-   :target: https://colab.research.google.com/github/finite-sample/fewlab/blob/main/docs/fewlab_demo_colab.ipynb
+   >>> import numpy as np
+   >>> import pandas as pd
+   >>> from fewlab import Study
+   >>> rng = np.random.default_rng(7)
+   >>> n, m = 400, 500
+   >>> # Sites differ in popularity and in the kind of user they attract.
+   >>> taste = rng.normal(size=(m, 2))
+   >>> popularity = np.exp(rng.normal(0, 1.4, size=m))
+   >>> Z = rng.normal(size=(n, 2))
+   >>> rate = np.exp(0.4 + Z @ taste.T + np.log(popularity) - np.log(popularity).mean())
+   >>> visits = pd.DataFrame(
+   ...     rng.poisson(rate), columns=[f"site{j}" for j in range(m)]
+   ... )
+   >>> users = pd.DataFrame(
+   ...     np.c_[np.ones(n), Z], columns=["const", "age", "income"]
+   ... )
+   >>> panel = Study(visits, users)
+   >>> panel.influence.n_items
+   500
 
-This notebook demonstrates:
+Labeling 60 of the 500 sites, chosen by influence:
 
-- **E-commerce simulation** with 1,000 users and 100 products
-- **Performance comparison** between random and optimal item selection
-- **Statistical analysis** showing ~33% reduction in standard errors
-- **Visualization** of bias, RMSE, and confidence interval improvements
-- **Complete workflow** from data generation to final estimand
+.. doctest::
 
-E-commerce Product Labeling
-----------------------------
+   >>> design = panel.design(budget=60)
+   >>> sample = panel.draw(design, random_state=3)
+   >>> len(sample), len(design.certain) > 0
+   (60, True)
 
-Suppose you run an e-commerce platform and want to understand how user demographics relate to product preferences. You need to label products by category but have a limited budget.
+Because the population is heavy-tailed, the certainty core absorbs a large share
+of the budget and the sampled tail covers the rest.
 
-.. code-block:: python
+.. doctest::
 
-   import pandas as pd
-   import numpy as np
-   from fewlab import items_to_label
+   >>> core = len(design.certain)
+   >>> 0 < core < 60
+   True
 
-   # User demographics
-   users = pd.DataFrame({
-       'age': [25, 34, 45, 29, 52, 38, 31, 41],
-       'income': [35000, 65000, 85000, 42000, 95000, 58000, 48000, 72000],
-       'urban': [1, 1, 0, 1, 0, 1, 1, 0],  # 1=urban, 0=suburban/rural
-       'has_children': [0, 1, 1, 0, 1, 0, 1, 1]
-   })
+Costs that differ by entity
+---------------------------
 
-   # Product purchase counts (users × products)
-   products = pd.DataFrame({
-       'laptop': [2, 1, 0, 1, 1, 2, 0, 1],
-       'smartphone': [1, 2, 1, 2, 0, 1, 2, 1],
-       'tablet': [0, 1, 1, 0, 1, 1, 0, 2],
-       'headphones': [3, 2, 1, 4, 0, 2, 3, 1],
-       'camera': [0, 0, 2, 0, 1, 1, 0, 1],
-       'gaming_console': [1, 0, 0, 2, 0, 0, 1, 0],
-       'smartwatch': [1, 1, 0, 1, 0, 2, 1, 0],
-       'speakers': [0, 1, 1, 1, 2, 0, 1, 1]
-   })
+The rule is value per dollar, so an entity that is expensive to label is bought
+less often at the same influence.
 
-   # Get top 4 products to label first
-   priority_products = items_to_label(
-       counts=products,
-       X=users,
-       K=4
-   )
+.. doctest::
 
-   print(f"Label these products first: {priority_products}")
-   # Output might be: ['headphones', 'smartphone', 'laptop', 'smartwatch']
+   >>> cost = pd.Series(1.0, index=panel.influence.items)
+   >>> biggest = panel.scores().idxmax()
+   >>> cost[biggest] = 50.0
+   >>> cheap = panel.design(60).probabilities[biggest]
+   >>> dear = panel.design(60, cost=cost).probabilities[biggest]
+   >>> bool(dear < cheap)
+   True
 
-Content Moderation
--------------------
+A mutually exclusive taxonomy
+-----------------------------
 
-You're moderating user-generated content and need to prioritize which content to review for safety.
+When each site belongs to exactly one category, the squared label norm is one,
+so the design needs no pilot labeling at all. Labels are supplied as one column
+per class.
 
-.. code-block:: python
+.. doctest::
 
-   # User characteristics
-   users = pd.DataFrame({
-       'account_age_days': [30, 365, 10, 180, 90, 720, 45, 200],
-       'follower_count': [50, 1200, 15, 300, 150, 2500, 80, 450],
-       'verified': [0, 1, 0, 0, 0, 1, 0, 0],
-       'posting_frequency': [2.1, 0.8, 5.2, 1.5, 3.1, 0.5, 4.0, 1.2]  # posts per day
-   })
+   >>> classes = ["news", "shopping", "social"]
+   >>> draw = rng.integers(0, 3, len(sample))
+   >>> labels = pd.DataFrame(
+   ...     np.eye(3)[draw], index=sample.items, columns=classes
+   ... )
+   >>> est = panel.estimate(sample, labels)
+   >>> est.coefficients.shape
+   (3, 3)
+   >>> list(est.coefficients.columns)
+   ['news', 'shopping', 'social']
 
-   # Content interaction counts (views, likes, shares)
-   content_interactions = pd.DataFrame({
-       'post_1': [10, 150, 5, 30, 25, 200, 15, 40],
-       'post_2': [0, 80, 2, 15, 8, 120, 3, 20],
-       'post_3': [20, 300, 1, 50, 40, 450, 25, 70],
-       'post_4': [5, 20, 8, 10, 12, 25, 10, 15],
-       'post_5': [0, 5, 15, 2, 3, 10, 8, 5],
-       'post_6': [30, 180, 0, 25, 20, 220, 12, 35]
-   })
+Soft labels need no special handling: a coder's probability distribution over
+classes is just a row that does not happen to be one-hot.
 
-   # Prioritize 3 posts for manual review
-   priority_content = items_to_label(
-       counts=content_interactions,
-       X=users,
-       K=3
-   )
+.. doctest::
 
-   print(f"Review these posts first: {priority_content}")
+   >>> soft = pd.DataFrame(
+   ...     rng.dirichlet(np.ones(3), size=len(sample)),
+   ...     index=sample.items,
+   ...     columns=classes,
+   ... )
+   >>> panel.estimate(sample, soft).coefficients.shape
+   (3, 3)
 
-Website Feature Usage Analysis
-------------------------------
+A transparent design for a labeling vendor
+------------------------------------------
 
-You want to understand which website features to label by importance, given user behavior data.
+A certainty core with a uniform random tail is easier to explain and audit than
+unequal tail probabilities, and its core size is chosen by arithmetic rather
+than judgment.
 
-.. code-block:: python
+.. doctest::
 
-   # User characteristics
-   users = pd.DataFrame({
-       'session_length_min': [12, 45, 8, 25, 60, 15, 30, 40],
-       'pages_per_session': [3, 12, 2, 6, 18, 4, 8, 10],
-       'mobile_user': [1, 0, 1, 1, 0, 1, 0, 0],
-       'returning_user': [0, 1, 0, 1, 1, 0, 1, 1]
-   })
+   >>> simple = panel.design(60, method="core_plus_tail")
+   >>> simple.diagnostics["core_size"] > 0
+   True
+   >>> round(simple.diagnostics["tail_probability"], 4) > 0
+   True
 
-   # Feature usage counts
-   feature_usage = pd.DataFrame({
-       'search_bar': [5, 12, 2, 8, 15, 3, 6, 9],
-       'filters': [1, 8, 0, 3, 12, 1, 4, 6],
-       'sort_options': [2, 6, 1, 4, 10, 2, 3, 5],
-       'user_reviews': [0, 5, 1, 2, 8, 0, 3, 4],
-       'related_items': [3, 10, 2, 5, 14, 2, 7, 8],
-       'wishlist': [1, 3, 0, 1, 6, 0, 2, 3],
-       'chat_support': [0, 1, 1, 0, 2, 1, 0, 1],
-       'newsletter_signup': [0, 1, 0, 1, 1, 0, 1, 1]
-   })
+It cannot beat the unrestricted design, which is free to vary the tail.
 
-   # Focus on top 4 features
-   priority_features = items_to_label(
-       counts=feature_usage,
-       X=users,
-       K=4
-   )
+.. doctest::
 
-   print(f"Analyze these features first: {priority_features}")
+   >>> bool(panel.design(60).risk <= simple.risk)
+   True
 
-Comparing Different Approaches
-------------------------------
+Fewest labels for a fixed precision
+------------------------------------
 
-You can compare the algorithmic selection with random sampling:
+The reverse question: rather than fixing a budget and minimizing error, fix the
+per-unit standard error and minimize the number of labels.
 
-.. code-block:: python
+.. doctest::
 
-   import numpy as np
-   from fewlab import items_to_label
+   >>> from fewlab.rowse import row_se_min_labels
+   >>> pi = row_se_min_labels(visits, eps2=0.05**2)
+   >>> bool(0 < pi.sum() < visits.shape[1])
+   True
 
-   # Your data
-   users = pd.DataFrame({'age': range(20, 120), 'income': range(30000, 130000, 1000)})
-   items = pd.DataFrame(np.random.poisson(3, (100, 20)),
-                       columns=[f'item_{i}' for i in range(20)])
+Comparing against a random baseline
+-----------------------------------
 
-   # Algorithmic selection
-   smart_selection = items_to_label(items, users, K=5)
+Uniform sampling is the honest benchmark, and the risk ordering is guaranteed
+rather than empirical.
 
-   # Random selection for comparison
-   random_selection = np.random.choice(items.columns, size=5, replace=False).tolist()
+.. doctest::
 
-   print(f"Smart selection: {smart_selection}")
-   print(f"Random selection: {random_selection}")
-
-Iterative Labeling Strategy
-----------------------------
-
-Start small and expand based on results:
-
-.. code-block:: python
-
-   # Start with a small set
-   initial_items = items_to_label(products, users, K=3)
-   print(f"Round 1 - Label these {len(initial_items)} items: {initial_items}")
-
-   # After labeling, you might want more
-   if analysis_needs_more_precision():
-       additional_items = items_to_label(products, users, K=6)
-       new_items = [item for item in additional_items if item not in initial_items]
-       print(f"Round 2 - Label these additional items: {new_items}")
-
-Working with Large Datasets
-----------------------------
-
-For large datasets, you might want to sample users first:
-
-.. code-block:: python
-
-   # Sample users if dataset is very large
-   if len(users) > 10000:
-       sample_idx = np.random.choice(len(users), size=5000, replace=False)
-       users_sample = users.iloc[sample_idx]
-       items_sample = items.iloc[sample_idx]
-   else:
-       users_sample = users
-       items_sample = items
-
-   priority_items = items_to_label(items_sample, users_sample, K=20)
-
-Error Handling
---------------
-
-Robust error handling for real-world data:
-
-.. code-block:: python
-
-   def safe_item_selection(counts, features, K, ridge=None):
-       """Wrapper with error handling."""
-       try:
-           # Check data alignment
-           if not counts.index.equals(features.index):
-               # Try to align by intersection
-               common_idx = counts.index.intersection(features.index)
-               if len(common_idx) == 0:
-                   raise ValueError("No common users between datasets")
-               counts = counts.loc[common_idx]
-               features = features.loc[common_idx]
-               print(f"Aligned datasets to {len(common_idx)} common users")
-
-           # Check for empty data
-           if counts.sum().sum() == 0:
-               raise ValueError("No usage data found")
-
-           return items_to_label(counts, features, K=K, ridge=ridge)
-
-       except np.linalg.LinAlgError:
-           print("Matrix singularity detected, adding ridge regularization")
-           return items_to_label(counts, features, K=K, ridge=1e-6)
-       except Exception as e:
-           print(f"Error in item selection: {e}")
-           # Fallback to random selection
-           return np.random.choice(counts.columns, size=min(K, len(counts.columns)),
-                                 replace=False).tolist()
-
-   # Use the robust version
-   selected_items = safe_item_selection(products, users, K=5)
+   >>> pps = panel.design(60)
+   >>> srs = panel.design(60, method="srs")
+   >>> bool(pps.risk < srs.risk)
+   True

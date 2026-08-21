@@ -31,6 +31,7 @@ from .influence import (
     direction_spectrum,
     influence,
 )
+from .rowse import RowSEResult, row_se_min_labels
 from .study import Ranking, Study
 
 __version__ = "3.0.0"
@@ -41,6 +42,7 @@ __all__ = [
     "LabelDesign",
     "LabelSample",
     "Ranking",
+    "RowSEResult",
     "ShareEffect",
     "Study",
     "__version__",
@@ -52,6 +54,7 @@ __all__ = [
     "estimate_share_effect",
     "influence",
     "poisson_pps",
+    "row_se_min_labels",
     "simple_random",
     "trim_alpha",
 ]

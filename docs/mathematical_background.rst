@@ -1,186 +1,191 @@
-Mathematical Background
+Mathematical background
 =======================
 
-This section explains the mathematical foundations behind fewlab's item selection algorithms.
+This page states the identity the package rests on and the design results that
+follow from it. The manuscript in ``ms/`` gives the same material with proofs,
+related work, and the empirical evaluation.
 
-Problem Setup
--------------
+The estimand
+------------
 
-Suppose we have:
-
-- :math:`n` users (rows) and :math:`m` items (columns)
-- Usage count matrix :math:`C \in \mathbb{R}^{n \times m}` where :math:`C_{ij}` is the number of times user :math:`i` used item :math:`j`
-- User feature matrix :math:`X \in \mathbb{R}^{n \times p}` containing :math:`p` features for each user
-- Budget to label :math:`K` items out of :math:`m` total items
-
-Our goal is to select which :math:`K` items to label to minimize the variance of regression coefficients when estimating:
+Rows are units and columns are entities that carry an expensive label. With
+counts :math:`C`, row totals :math:`T_i = \sum_j c_{ij}`, and row shares
+:math:`V_{ij} = c_{ij}/T_i`, entity :math:`j` carries a label :math:`a_j` and the
+unit-level outcome is the share of activity on labeled entities:
 
 .. math::
-   y_j = X\beta_j + \epsilon_j
+   y_i = \sum_{j=1}^m V_{ij}\, a_j.
 
-where :math:`y_j` is the (unknown) label vector for item :math:`j`.
+With unit features :math:`X`, the estimand is the coefficient you would obtain by
+labeling every entity in the frame,
+:math:`\beta^* = (X^\top X)^{-1} X^\top y`.
 
-Statistical Framework
----------------------
-
-A-Optimal Design
-^^^^^^^^^^^^^^^^
-
-We use A-optimal experimental design theory. For a given item :math:`j`, if we observe its labels with probability :math:`\pi_j`, the variance of the regression coefficient estimator is proportional to:
-
-.. math::
-   \text{Var}(\hat{\beta}_j) \propto \text{tr}((X^T X)^{-1} X^T \Sigma_j X (X^T X)^{-1}) / \pi_j
-
-where :math:`\Sigma_j` is the covariance matrix of the response for item :math:`j`.
-
-The A-optimal weights are:
-
-.. math::
-   w_j = \text{tr}((X^T X)^{-1} X^T \Sigma_j X (X^T X)^{-1})
-
-For usage data, we approximate :math:`\Sigma_j` using the empirical usage patterns.
-
-Usage-Based Approximation
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-We approximate the response covariance using usage proportions. For user :math:`i` and item :math:`j`:
-
-.. math::
-   V_{ij} = \frac{C_{ij}}{T_i}
-
-where :math:`T_i = \sum_{j'} C_{ij'}` is the total usage for user :math:`i`.
-
-The weight becomes:
-
-.. math::
-   w_j = g_j^T (X^T X)^{-1} g_j
-
-where :math:`g_j = X^T v_j` and :math:`v_j` is the :math:`j`-th column of :math:`V`.
-
-Algorithm Details
+The decomposition
 -----------------
 
-Main Algorithm (:func:`fewlab.items_to_label`)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-1. **Compute usage proportions**: :math:`V_{ij} = C_{ij} / T_i` for users with :math:`T_i > 0`
-
-2. **Calculate regression projections**: :math:`G = X^T V` where :math:`G \in \mathbb{R}^{p \times m}`
-
-3. **Compute A-optimal weights**:
-
-   .. math::
-      w_j = g_j^T (X^T X)^{-1} g_j
-
-   where :math:`g_j` is the :math:`j`-th column of :math:`G`.
-
-4. **Select top K items**: Return items with largest :math:`w_j` values.
-
-Budget-Constrained Optimization (:func:`fewlab.pi_aopt_for_budget`)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-For a given labeling budget :math:`B`, solve:
+Writing :math:`H = (X^\top X)^{-1} X^\top V` with columns :math:`h_j`,
 
 .. math::
-   \min_{\pi} \sum_{j=1}^m \frac{w_j}{\pi_j}
+   \beta^* = (X^\top X)^{-1} X^\top V a = \sum_{j=1}^m h_j a_j.
 
-subject to:
+This is an identity. There is no error term, no distributional assumption, and
+no covariance to approximate. Entity :math:`j`'s entire contribution is
+:math:`h_j a_j`, and :math:`h_j` depends only on :math:`(C, X)`, so it is known
+before any label is purchased.
 
-.. math::
-   \sum_{j=1}^m \pi_j \leq B, \quad \pi_j \geq 0
+The algebra carries a vector label :math:`a_j \in \mathbb{R}^q` unchanged, giving
+:math:`\beta^* = \sum_j h_j a_j^\top`. A mutually exclusive taxonomy and a
+coder's probability distribution over classes therefore need no special handling.
 
-The optimal solution has the form:
+Unbiasedness
+------------
 
-.. math::
-   \pi_j^* = \frac{\sqrt{w_j}}{\lambda} \text{ if } \sqrt{w_j} > \lambda \pi_{\min}, \text{ else } \pi_{\min}
-
-where :math:`\lambda` is chosen to satisfy the budget constraint.
-
-Balanced Fixed-Size Sampling (:func:`fewlab.balanced_fixed_size`)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-This heuristic algorithm:
-
-1. **Initial sampling**: Draw :math:`K` items proportional to :math:`\pi_j`
-2. **Greedy improvement**: Iteratively swap items to minimize :math:`\|\sum_{j \in S} (I_j/\pi_j - 1) g_j\|_2^2`
-
-where :math:`S` is the selected set and :math:`I_j` is the indicator that item :math:`j` is selected.
-
-Row-Wise Standard Error Constraints (:func:`fewlab.row_se_min_labels`)
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-Minimizes total labeling subject to per-row standard error constraints:
+Sample entities with inclusion probabilities :math:`\pi_j` and indicators
+:math:`I_j` that do not depend on the unknown labels. Then
 
 .. math::
-   \min_{\pi} \sum_{j=1}^m \pi_j
+   \widehat\beta = \sum_{j=1}^m \frac{I_j}{\pi_j} h_j a_j
 
-subject to:
+is design-unbiased, since :math:`\mathbb{E}[I_j/\pi_j] = 1` and everything else is
+fixed. Unbiasedness is a constraint on the design rather than a property to hope
+for: it holds exactly when every entity with :math:`h_j \neq 0` gets positive
+probability and enters with weight :math:`1/\pi_j`.
+
+An entity nobody touched has :math:`h_j = 0` and contributes nothing, so it may
+be left unlabeled at no cost in bias. That is the only case in which
+:math:`\pi_j = 0` is correct.
+
+Selecting the top :math:`K` entities by any criterion assigns probability one
+above the cut and zero below it. Its bias is :math:`-\sum_{j \notin S} h_j a_j`,
+which depends on labels nobody bought and so cannot be estimated or bounded from
+the data in hand. This is why :class:`fewlab.Ranking` cannot be passed to an
+estimator.
+
+Which entities are worth labeling
+---------------------------------
+
+For a positive semidefinite :math:`W`, the loss
+:math:`\operatorname{tr}[W(\widehat\beta - \beta^*)(\widehat\beta - \beta^*)^\top]`
+has exact design risk
 
 .. math::
-   \sum_{j=1}^m \frac{q_{ij}}{\pi_j} \leq \epsilon_i^2 + \sum_{j=1}^m q_{ij} \quad \forall i
+   \mathbb{E}_p L = \sum_{j=1}^m \frac{1-\pi_j}{\pi_j} b_j,
+   \qquad b_j = (h_j^\top W h_j)\, a_j^2.
 
-where :math:`q_{ij} = (C_{ij}/T_i)^2`.
+The criterion enters only through :math:`b_j`, and it has to be declared.
 
-This is solved using a dual optimization approach with gradient descent.
+.. list-table::
+   :header-rows: 1
 
-Numerical Considerations
-------------------------
+   * - ``loss=``
+     - :math:`W`
+     - :math:`b_j` for a one-hot taxonomy
+   * - ``"coefficient"``
+     - :math:`I`
+     - :math:`h_j^\top h_j = g_j^\top (X^\top X)^{-2} g_j`
+   * - ``"prediction"``
+     - :math:`X^\top X`
+     - :math:`g_j^\top (X^\top X)^{-1} g_j`
+   * - ``contrast=L``
+     - :math:`LL^\top`
+     - :math:`\lVert L^\top h_j \rVert^2`
+   * - ``"regressor"``
+     - see below
+     - :math:`\lVert v_j \rVert^2 - h_j^\top X^\top X h_j`
 
-Ridge Regularization
-^^^^^^^^^^^^^^^^^^^^^
+On a well-conditioned :math:`X^\top X` the first three rank entities almost
+identically. They diverge when :math:`X^\top X` is far from a scaled identity and
+the :math:`h_j` span several directions, where they can disagree on roughly a
+fifth of a budget. There is no target-free answer.
 
-When :math:`X^T X` is ill-conditioned, we add ridge regularization:
+When the choice cannot matter
+-----------------------------
+
+If every :math:`h_j` points in the same direction and entities differ only in
+magnitude, then :math:`b_j \propto \lVert h_j \rVert^2` under every :math:`W`,
+every criterion induces the same ordering, and the estimand stops mattering.
+Expected counts of the form :math:`\text{activity}_i \times \text{popularity}_j`
+produce exactly this degeneracy.
+
+:func:`fewlab.direction_spectrum` reports it. Read it against a noise floor of
+roughly :math:`1/\sqrt{\bar c}` for average count :math:`\bar c`, because integer
+counts inject spurious directions at that scale; an absolute cutoff would call
+the same population more degenerate simply for being observed more heavily.
+
+The optimal design
+------------------
+
+Minimizing the risk subject to :math:`\sum_j c_j \pi_j = K` and
+:math:`\pi_j \le 1` gives
 
 .. math::
-   (X^T X + \lambda I)^{-1}
+   \pi_j^\star = \min\left\{1,\ \lambda \sqrt{b_j / c_j}\right\}
 
-The default strategy chooses :math:`\lambda = 10^{-8}` when :math:`\text{cond}(X^T X) > 10^{12}`.
+for the :math:`\lambda` that exhausts the budget. The cap is not a separate rule
+for large entities: the set on which it binds is the certainty core. The square
+root rule also settles the unbiasedness constraint by itself, since it gives
+strictly positive probability to every entity with :math:`b_j > 0`. A probability
+floor is therefore unnecessary, and any floor moves the design away from minimum
+risk.
 
-Handling Sparse Data
-^^^^^^^^^^^^^^^^^^^^^
+Certainty core with a uniform tail
+----------------------------------
 
-- Users with zero total usage (:math:`T_i = 0`) are automatically removed
-- Numerical stability is maintained through careful matrix conditioning checks
-- Small regularization prevents divide-by-zero issues
+Order :math:`b_1 \ge \cdots \ge b_m`, take the first :math:`H` with certainty,
+and give the remainder :math:`p_H = (K-H)/(m-H)`. With
+:math:`S_H = \sum_{j>H} b_j`,
 
-Computational Complexity
--------------------------
+.. math::
+   R(H) = \frac{m-K}{K-H} S_H,
 
-- **Time complexity**: :math:`O(np^2 + mp^2)` for the main algorithm
-- **Space complexity**: :math:`O(nm + mp + p^2)`
-- **Bottleneck**: Matrix inversion :math:`(X^T X)^{-1}` when :math:`p` is large
+so the boundary follows from evaluating at most :math:`K` cutoffs. Promoting one
+more entity pays exactly when :math:`b_{H+1} > S_H/(K-H)`.
 
-The algorithm scales well for typical usage scenarios where :math:`p \ll n` and :math:`p \ll m`.
+This is a planning criterion. It is exact for a Bernoulli tail; a fixed-size
+simple random tail has smaller variance, because fixing the count removes the
+sample-size variability and contributions enter centered.
 
-Theoretical Properties
-----------------------
+Variance
+--------
 
-Optimality
-^^^^^^^^^^^
+The design covariance of :math:`\operatorname{vec}(\widehat\beta)` is
+:math:`\sum_j \frac{1-\pi_j}{\pi_j} (a_j a_j^\top) \otimes (h_j h_j^\top)`,
+estimated without bias from the sample by
+:math:`\sum_{j \in S} \frac{1-\pi_j}{\pi_j^2} (a_j a_j^\top) \otimes (h_j h_j^\top)`.
 
-Under the assumption that item labels follow the usage-proportion model, the A-optimal weights :math:`w_j` minimize the expected trace of the covariance matrix of regression coefficient estimates.
+This is exact under Poisson sampling. A fixed-size or balanced draw has smaller
+true variance, so intervals from :meth:`fewlab.Study.draw` with
+``fixed_size=True`` are conservative.
 
-Robustness
-^^^^^^^^^^
+The total standard error has a second component the budget cannot touch:
 
-The algorithm is robust to:
+.. math::
+   \operatorname{Var}(\widehat\beta)
+   = \sigma^2 (X^\top X)^{-1} + \sum_j \frac{1-\pi_j}{\pi_j} b_j.
 
-- **Missing data**: Handled through zero usage entries
-- **Outliers**: Proportional scaling reduces sensitivity to extreme usage patterns
-- **Collinearity**: Ridge regularization prevents numerical instability
+Their ratio is a stopping rule. ``Estimate.diagnostics["variance_ratio"]``
+reports the share owed to the labeling budget.
 
-Limitations
-^^^^^^^^^^^
+When the label is a covariate
+-----------------------------
 
-- Assumes usage patterns are informative about labeling importance
-- Optimal for trace-of-covariance criterion (A-optimality), not other design criteria
-- Performance depends on the assumption that high-influence items should be prioritized
+If the constructed share appears on the right-hand side of a regression rather
+than the left, the guarantee fails: an unbiased noisy covariate attenuates its
+own coefficient, and the attenuation shrinks with the labeling budget rather
+than with the size of the panel. Because the design chose :math:`\pi`, the error
+variance is known and the attenuation can be corrected. See
+:func:`fewlab.estimate_share_effect`.
 
 References
 ----------
 
-The mathematical framework builds on classical optimal experimental design theory:
-
-- Fedorov, V.V. (1972). *Theory of Optimal Experiments*
-- Pukelsheim, F. (2006). *Optimal Design of Experiments*
-- Atkinson, A.C., Donev, A.N., and Tobias, R.D. (2007). *Optimum Experimental Designs*
+- Horvitz, D. G., & Thompson, D. J. (1952). A generalization of sampling without
+  replacement from a finite universe.
+- Deville, J.-C., & Tillé, Y. (2004). Efficient balanced sampling: the cube
+  method.
+- Deville, J.-C., & Särndal, C.-E. (1992). Calibration estimators in survey
+  sampling.
+- Clark, R. G. (2022). Sample design for analysis using high-influence
+  probability sampling.
+- Potter, F. (1990). A study of procedures to identify and trim extreme sampling
+  weights.
