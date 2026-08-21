@@ -123,3 +123,22 @@ def test_counts_can_be_handed_over_already_sparse(study) -> None:
     counts, X = panel(n=100, m=50, seed=44)
     direct = Study(CountMatrix.from_dense(counts), X)
     assert direct.influence.n_items == 50
+
+
+def test_the_variance_estimator_is_reachable_through_the_study(study) -> None:
+    """A choice only available on the low-level function is not available.
+
+    On a cube draw the Poisson variance is conservative, so the alternatives
+    must be narrower; a user going through `Study` should be able to say so.
+    """
+    labels = one_hot_labels(study.influence.items, classes=2, seed=45)
+    sample = study.draw(study.design(40), random_state=6, fixed_size=True)
+    widths = {
+        name: float(
+            study.estimate(sample, labels.loc[sample.items], variance=name)
+            .design_se.to_numpy()
+            .mean()
+        )
+        for name in ("poisson", "hajek", "balanced")
+    }
+    assert widths["balanced"] < widths["hajek"] < widths["poisson"], widths

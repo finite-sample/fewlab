@@ -365,6 +365,7 @@ class Study:
         *,
         proxy: pd.DataFrame | None = None,
         alpha: pd.Series | float = 1.0,
+        variance: str = "poisson",
     ) -> Estimate:
         """Estimate `B` from a realized sample.
 
@@ -377,6 +378,11 @@ class Study:
             proxy: Optional cheap prediction for every entity, enabling the
                 difference estimator.
             alpha: Shrinkage on the sampled correction; 1.0 is unbiased.
+            variance: Which variance estimator to use. The default is exact for
+                a Poisson draw and conservative for a fixed-size one; pass
+                `"balanced"` after a cube draw to recover what that conservatism
+                costs, which on a realistic panel is about half the width of the
+                interval.
 
         Returns:
             The estimate with both variance components.
@@ -405,6 +411,7 @@ class Study:
             X=self.X,
             proxy=proxy,
             alpha=alpha,
+            variance=variance,
         )
 
     def __repr__(self) -> str:
