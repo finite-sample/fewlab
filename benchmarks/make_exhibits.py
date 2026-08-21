@@ -26,6 +26,7 @@ import fewlab
 BUDGETS = [100, 250, 500, 1000, 2000]
 SHOWN_BUDGETS = [250, 1000, 2000]
 FRONTIER_BUDGETS = [250, 1000, 4000]
+CUBE_REPS = 500
 
 
 def fmt(value: float, digits: int = 3) -> str:
@@ -85,18 +86,26 @@ def diagnostics(study, labels, B, budget: int, reps: int) -> dict:
     design = study.design(budget)
     rng = np.random.default_rng(101)
     vals, ses = [], []
-    for _ in range(min(reps // 4, 400)):
+    # Cube draws cost about a second each at this scale, so this is the
+    # expensive part. It still needs enough replicates that a ratio of standard
+    # deviations is estimable: at 75 draws its own sampling error is about eight
+    # percent, which is larger than the effect being measured.
+    for _ in range(CUBE_REPS):
         s = study.draw(design, random_state=rng, fixed_size=True)
         e = fewlab.estimate(study.influence, s, labels.loc[s.items])
         vals.append(e.coefficients.to_numpy().ravel())
         ses.append(e.design_se.to_numpy().ravel())
     vals, ses = np.array(vals), np.array(ses)
-    ratio = np.asarray(ses).mean(0) / np.asarray(vals).std(0)
+    # Pool across coefficients rather than reporting the extremes of 26 separate
+    # noisy ratios, whose min and max are dominated by estimation error.
+    pooled = float(np.sqrt(np.mean(ses**2) / np.mean(vals.var(axis=0))))
+    per_coef = np.asarray(ses).mean(0) / np.asarray(vals).std(0)
     covered = np.abs(vals - B.ravel()) <= 1.96 * ses
     out["cube"] = {
-        "se_ratio_lo": float(ratio.min()),
-        "se_ratio_hi": float(ratio.max()),
+        "se_ratio": pooled,
+        "se_ratio_median": float(np.median(per_coef)),
         "coverage": float(covered.mean()),
+        "reps": CUBE_REPS,
     }
     return out
 
@@ -306,8 +315,8 @@ def main() -> None:
         "PpsVarDispersion": f"{diag['pps']['var_dispersion']:.1f}",
         "SrsVarRatio": f"{diag['srs']['var_ratio']:.2f}",
         "PpsVarRatio": f"{diag['pps']['var_ratio']:.2f}",
-        "CubeSeRatioLo": f"{100 * (diag['cube']['se_ratio_lo'] - 1):.0f}",
-        "CubeSeRatioHi": f"{100 * (diag['cube']['se_ratio_hi'] - 1):.0f}",
+        "CubeSeExcess": f"{100 * (diag['cube']['se_ratio'] - 1):.0f}",
+        "CubeReps": str(diag["cube"]["reps"]),
         "CubeCoverage": f"{diag['cube']['coverage']:.2f}",
         "NormMedian": fmt(float(norms.median()), 2),
         "NormMax": f"{int(norms.max()):,}",
