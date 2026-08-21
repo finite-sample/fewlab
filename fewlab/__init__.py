@@ -16,6 +16,7 @@ contributing entity gets positive probability and reciprocal weight. Minimum
 standard error is the objective under it.
 """
 
+from .covariate import ShareEffect, estimate_share_effect
 from .designs import (
     LabelDesign,
     core_plus_tail,
@@ -40,6 +41,7 @@ __all__ = [
     "LabelDesign",
     "LabelSample",
     "Ranking",
+    "ShareEffect",
     "Study",
     "__version__",
     "contribution_scores",
@@ -47,6 +49,7 @@ __all__ = [
     "design_risk",
     "direction_spectrum",
     "estimate",
+    "estimate_share_effect",
     "influence",
     "poisson_pps",
     "simple_random",

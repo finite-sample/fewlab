@@ -37,6 +37,7 @@
 \usepackage{microtype}
 \usepackage{enumitem}
 \usepackage[authoryear,round]{natbib} % for \citet / \citep
+\usepackage{graphicx}
 \usepackage[colorlinks=true,allcolors=blue]{hyperref}
 
 \newcommand{\E}{\mathbb{E}}
@@ -47,7 +48,12 @@
 \newcommand{\HT}{\mathrm{HT}}
 \newcommand{\pos}[1]{\left(#1\right)_+}
 
-\title{Unbiased Regression with Costly Item Labels}
+
+% Every computed number on the page comes from here, and this file is written by
+% benchmarks/make_exhibits.py. Nothing measured is typed into the prose.
+\input{generated/macros}
+
+\title{Estimand-Driven Sampling of Reusable Labels}
 \author{Gaurav Sood}
 \date{}
 
@@ -55,274 +61,176 @@
 \maketitle
 
 \begin{abstract}
-We study regression on per--row trait shares when item labels are costly. Rows are units (people, devices, firms), columns are items (domains, products, apps), and each item carries a latent trait that must be purchased once and is then reused across every row the item touches. Writing $V$ for row shares and $H=(X^\top X)^{-1}X^\top V$, the complete--label OLS estimand decomposes exactly as $\beta^*=\sum_j h_j a_j$, so an item's entire contribution is known from $(C,X)$ before any label is bought. Sampling items with probability $\pi_j$ and weighting by $1/\pi_j$ is then design--unbiased, the exact risk under quadratic loss is $\sum_j (1-\pi_j)\pi_j^{-1}b_j$, and the optimum is $\pi_j^\star=\min\{1,\lambda\sqrt{b_j/c_j}\}$, whose cap produces a certainty head rather than presuming one. We show that the criterion must be declared, since fitted--value and coefficient loss weight items differently and can disagree on a fifth of a top--$K$ set; that the certainty--core boundary of the take--all/take--some design has a closed form rather than requiring judgment; that a frozen classifier can be folded in through a difference estimator that is unbiased whatever the classifier says; and that the reported standard error separates into a component the labeling budget controls and one it cannot, whose ratio is a stopping rule. On a browsing panel of 1{,}132 panelists and 34{,}078 domains with known tracking labels, influence--proportional sampling attains a ninth of the coefficient error of uniform sampling at the same budget, holds that ratio across a twenty--fold range of budgets, and delivers intervals that cover at their nominal rate where uniform sampling's do not.
+Labeling \LabeledDomains{} websites is a month of work; labeling 250 of them is an afternoon. On a metered browsing panel we show that the afternoon buys almost the same regression coefficients, provided the 250 are chosen by how much each site moves the estimate and weighted by the chance it had of being chosen. Sampling websites with probability proportional to influence attains \EffAtTwoFifty{} of the error that spending the same budget uniformly at random incurs, holds that ratio across a twentyfold range of budgets, and produces intervals that cover at their nominal rate where uniform sampling's cover at \SrsCoverageLo{}. The argument rests on an identity rather than an approximation: writing $V$ for row shares and $H=(X^\top X)^{-1}X^\top V$, the complete-label coefficient is $\beta^*=\sum_j h_j a_j$, so an item's entire contribution to the answer is fixed before any label is bought. From that identity we derive the optimal inclusion probabilities, show that the certainty head of a take-all design falls out of a constraint rather than a judgment call, give the take-some boundary in closed form, and show that the criterion has to be declared because fitted-value and coefficient loss can disagree on a fifth of a budget. We also show where the guarantee stops. When the purchased label builds a covariate rather than an outcome, an unbiased input yields an attenuated coefficient, and we give the correction the design makes available. The methods are implemented in an open-source package, and every number below regenerates from a hashed extract distributed with it.
 \end{abstract}
 
-\section{Setup, HT guarantees, and limits}
+\section{Introduction}
 
-Let $C=(c_{ij})\in\mathbb{R}_+^{n\times m}$ be counts, $T_i=\sum_{j=1}^m c_{ij}$, and the row share
-\[
-y_i \;=\; \sum_{j=1}^m \frac{c_{ij}}{T_i}\, a_j,\qquad a_j\in\{0,1\}.
-\]
-Let $X\in\mathbb{R}^{n\times p}$ and define the OLS estimand
-\[
-\beta^* \;=\; (X^\top X)^{-1}X^\top y.
-\]
-We sample \emph{items} with inclusion probabilities $\pi_j\in(0,1]$ and indicators $I_j\sim\mathrm{Bernoulli}(\pi_j)$ that are independent of the unknown labels $a=(a_1,\dots,a_m)$. The item–wise Horvitz–Thompson estimator of the share is~\citep{HorvitzThompson1952}
-\[
-\widehat y_i \;=\; \sum_{j=1}^m \frac{I_j}{\pi_j}\,\frac{c_{ij}}{T_i}\,a_j,\qquad
-u:=\widehat y - y.
-\]
-Because $\E[I_j/\pi_j]=1$ and $T_i$ is fixed, $\E[\widehat y_i]=y_i$ for every $i$, hence
-\[
-\E[\widehat\beta]=(X^\top X)^{-1}X^\top \E[\widehat y]=(X^\top X)^{-1}X^\top y=\beta^*.
-\]
-\emph{HT is applied over items (the finite population), not rows; each $y_i$ is a linear functional of $a$.} Rows with $T_i=0$ are excluded (or $y_i$ defined and excluded from regression).
+Some labels are expensive and get reused. A website's content category, a merchant's industry, a surname's likely ethnicity: each costs something to determine once, and then applies to every record touching that entity. A browsing panel of a thousand people generates millions of visits across tens of thousands of domains, and an analyst who wants to know whether older adults encounter more trackers must attach a label to the domains, not to the visits. The labeling bill scales with the number of distinct entities; the value of a label scales with how much of the data it touches and with what the analyst intends to estimate. Those two quantities are not the same, and the gap between them is the opportunity.
 
-\medskip
-\noindent\textbf{An exact decomposition.} Collecting the row shares into $V=(c_{ij}/T_i)$ and writing $H=(X^\top X)^{-1}X^\top V$ with columns $h_1,\dots,h_m$, the estimand separates over items with no remainder:
+The usual response is to label as much as the budget allows, most valuable first, and treat what remains as zero. That is a reasonable instinct and it produces a biased estimate whose bias cannot be bounded from the data, because the unlabeled entities contribute an amount that depends on labels nobody bought. The alternative this paper develops is to treat the labeling decision as a sampling problem: give every entity that matters a positive and known chance of selection, choose those chances to minimize the variance of the estimate you actually want, and weight by the reciprocal.
+
+That reframing is not new in outline. Business surveys have long taken all the large units and sampled the rest; case-cohort designs measure expensive covariates on every case plus a random subcohort \citep{Prentice1986}; high-influence probability sampling picks units by their anticipated contribution to a regression \citep{Clark2022}. What is specific here is that the purchased label attaches to an entity reused across many records through a map the analyst already knows, and that this makes the value of a label exact rather than anticipated. Writing $V$ for the matrix of row shares and $H=(X^\top X)^{-1}X^\top V$ with columns $h_1,\dots,h_m$, the complete-label regression coefficient decomposes with no remainder:
+\[
+\beta^*=\sum_{j=1}^m h_j a_j .
+\]
+Item $j$ contributes $h_j a_j$ and nothing else, and $h_j$ is computable from the usage counts and the covariates before a single label is purchased. Every result below is a consequence of that identity.
+
+We contribute four things. First, the design: the risk-minimizing inclusion probabilities are $\pi_j^\star=\min\{1,\lambda\sqrt{b_j/c_j}\}$, in which the cap at one produces a certainty head rather than presuming one, and the take-all boundary of the simpler uniform-tail design has a closed form that replaces a judgment call with an arithmetic one. Second, the estimand must be declared: fitted-value loss and coefficient loss weight items differently and can disagree on a fifth of a budget, and there is a diagnostic for the populations on which the choice provably cannot matter. Third, the limits of the guarantee: when the label builds a covariate rather than an outcome, an unbiased constructed variable produces an attenuated coefficient, which we correct using the fact that the design knows its own error variance; and the reported standard error separates into a component the budget controls and one it cannot, whose ratio tells an analyst when to stop paying. Fourth, an open-source implementation \citep{fewlab}, in which the three objects this argument keeps distinct---a ranking, a probability design, and a realized sample---are distinct types, so that the mistake of weighting a deterministic selection as though it were a sample cannot be expressed.
+
+We evaluate on a population where the answer is known. A metered browsing panel of \PanelUsers{} US adults was scanned for tracking behavior, and \LabeledDomains{} of its \PanelDomains{} domains returned a successful scan. Restricting to those domains makes the complete-label coefficient exactly computable, so every design is scored against the same fixed target instead of against an estimate of one.
+
+\section{Setup and an exact decomposition}
+
+Let $C=(c_{ij})\in\mathbb{R}_+^{n\times m}$ be counts of unit $i$'s activity on item $j$, let $T_i=\sum_j c_{ij}$, and let $V_{ij}=c_{ij}/T_i$ be row shares. Item $j$ carries a latent label $a_j$, and the unit-level outcome is the share of activity on labeled items,
+\[
+y_i=\sum_{j=1}^m V_{ij}\,a_j .
+\]
+With covariates $X\in\mathbb{R}^{n\times p}$ the estimand is the complete-label regression coefficient $\beta^*=(X^\top X)^{-1}X^\top y$. Units with $T_i=0$ have no shares and are excluded.
+
+Collecting $H=(X^\top X)^{-1}X^\top V$ with columns $h_j$ gives
 \begin{equation}
 \label{eq:decomposition}
-\beta^*=(X^\top X)^{-1}X^\top V a=\sum_{j=1}^m h_j\,a_j .
+\beta^*=(X^\top X)^{-1}X^\top V a=\sum_{j=1}^m h_j a_j .
 \end{equation}
-This is an identity, not an approximation: item $j$'s entire contribution to the estimand is $h_j a_j$, and $h_j$ is computable from $(C,X)$ alone, before any label is purchased. Everything below follows from \eqref{eq:decomposition}. The HT estimator is $\widehat\beta=\sum_j (I_j/\pi_j)h_j a_j$, its design variance is exactly $\sum_j \tfrac{1-\pi_j}{\pi_j}a_j^2\,h_jh_j^\top$, and the square--root allocation, the certainty head, and the closed form of \S\ref{sec:core} are consequences rather than heuristics. The same algebra carries an item label that is a vector $a_j\in\mathbb{R}^q$ rather than a scalar, with $\beta^*=\sum_j h_j a_j^\top$; a one--hot taxonomy and a coder's probability distribution over classes are then handled without modification.
+This is an identity. There is no error term, no distributional assumption, and no approximation of a covariance: item $j$'s entire contribution to the estimand is $h_j a_j$, and $h_j$ depends only on $(C,X)$. The algebra carries a vector label $a_j\in\mathbb{R}^q$ unchanged, with $\beta^*=\sum_j h_j a_j^\top$, so a mutually exclusive taxonomy and a coder's probability distribution over classes need no separate treatment.
 
-\medskip
-\noindent\textbf{What HT does not guarantee.} The same item draws enter every row, so errors are \emph{shared across rows}:
-\[
-u_i=\sum_{j=1}^m\Big(\tfrac{I_j}{\pi_j}-1\Big)\frac{c_{ij}}{T_i}\,a_j,
-\qquad
-\Cov(u_i,u_k)=\sum_{j=1}^m \frac{1-\pi_j}{\pi_j}\,\frac{c_{ij}}{T_i}\,\frac{c_{kj}}{T_k}\,a_j^2.
-\]
-Consequently, the empirical distribution of $\widehat y$ is the true distribution \emph{convolved} with design noise; HT guarantees unbiased \emph{means} and unbiased \emph{OLS}, not unbiased \emph{quantiles}. For $\widehat\beta$, only the $X$–aligned error matters:
-\[
-\widehat\beta-\beta^*=(X^\top X)^{-1}X^\top u.
-\]
-For inference, design–based SEs (or, conservatively, item–cluster robust SEs) should be used; see \S\ref{sec:inference}. If labels suffer misclassification (sensitivity/specificity $\neq 1$), HT is unbiased for the \emph{noisy} trait; label–error corrections are then required for consistency in $\beta^*$.
-
-\section{Intuition: which items move OLS?}
-
-Define item $j$’s row–normalized exposure, its projection on the regression space, and its OLS influence weight:
-\[
-v_j=\frac{c_{\cdot j}}{T}\in\mathbb{R}^n,\qquad
-g_j=X^\top v_j\in\mathbb{R}^p,\qquad
-w_j=g_j^\top (X^\top X)^{-1} g_j=v_j^\top X (X^\top X)^{-1} X^\top v_j\ge 0.
-\]
-Under independent item sampling,
-\[
-\Var(u)=\sum_{j=1}^m \frac{1-\pi_j}{\pi_j}a_j^2\,v_jv_j^\top
-\ \preceq\ \sum_{j=1}^m \frac{1-\pi_j}{\pi_j}\,v_jv_j^\top.
-\]
-We adopt the \emph{whitened A–optimal} criterion~\citep{Kiefer1959}
-\[
-\widetilde\Delta(\symbf{\pi})\;:=\;(X^\top X)^{-1/2}X^\top \Var(u)\,X\, (X^\top X)^{-1/2},
-\]
-whose trace bounds as
+Sample items with inclusion probabilities $\pi_j\in(0,1]$ and indicators $I_j$ that do not depend on the unknown labels. The Horvitz--Thompson estimator \citep{HorvitzThompson1952}
 \begin{equation}
-\label{eq:priorfree}
-\tr\,\widetilde\Delta(\symbf{\pi})\ \le\ \sum_{j=1}^m \frac{1-\pi_j}{\pi_j}\, w_j
-=\sum_{j=1}^m \Big(\frac{1}{\pi_j}-1\Big) w_j.
+\label{eq:ht}
+\widehat\beta=\sum_{j=1}^m \frac{I_j}{\pi_j}h_j a_j
 \end{equation}
-\emph{Interpretation.} Items with large $w_j$ are the ones whose noise projects strongly onto $X$; leaving them unlabeled inflates OLS variance. The fixed–budget optimum will therefore sample with $\pi_j\propto \sqrt{w_j}$.
+is design-unbiased for $\beta^*$, since $\E[I_j/\pi_j]=1$ and everything else in \eqref{eq:decomposition} is fixed. Unbiasedness is thus a constraint on the design, not a property to be hoped for: it holds exactly when every item with $h_j\neq 0$ receives positive probability and enters with weight $1/\pi_j$.
 
-\paragraph{The criterion must be declared.} There is no target--free notion of which items are worth labeling. For a positive semidefinite $W$, the loss $\tr[W(\widehat\beta-\beta^*)(\widehat\beta-\beta^*)^\top]$ has exact design risk $\sum_j \tfrac{1-\pi_j}{\pi_j}b_j$ with $b_j=(h_j^\top W h_j)\,a_j^2$, so the criterion enters only through $b_j$. Three choices matter in practice. Fitted--value loss, $W=X^\top X$, gives the whitened weight $w_j=g_j^\top (X^\top X)^{-1}g_j$ used above. Coefficient loss, $W=I$, gives $h_j^\top h_j=g_j^\top (X^\top X)^{-2}g_j$. A contrast $L^\top\beta^*$ gives $W=LL^\top$ and $b_j=\|L^\top h_j\|^2$. All three yield square--root allocations and convex programs, and on a well--conditioned $X^\top X$ they rank items almost identically; they diverge when $X^\top X$ is far from a scaled identity and the $h_j$ span several directions, where they can disagree on a fifth of a top--$K$ set. We report the whitened criterion below for continuity with \eqref{eq:priorfree}, and the accompanying software requires the choice to be stated.
+Two consequences deserve emphasis because they are what deterministic selection gives up. An item that no unit touched has $h_j=0$, contributes nothing, and may be left unlabeled at no cost in bias; this is the only case in which $\pi_j=0$ is correct. And selecting the top $K$ items by any criterion assigns probability one above the cut and zero below it, so its bias is $-\sum_{j\notin S}h_ja_j$, a quantity that depends on labels nobody purchased and therefore cannot be estimated or bounded from the data in hand.
 
-\paragraph{When the criterion cannot matter.} If every $h_j$ points in the same direction and the items differ only in magnitude, then $b_j\propto\|h_j\|^2$ under every $W$, all criteria induce the same ordering, and the choice of estimand is immaterial. Expected counts of the form $\text{activity}_i\times\text{popularity}_j$ produce exactly this degeneracy. It is worth checking for, since a simulation built on such a population reports every design as equivalent whatever it measures. The singular values of the column--normalized $H$ diagnose it, read against a noise floor of order $1/\sqrt{\bar c}$ for average count $\bar c$.
+\section{What an item is worth}
 
-\section{Two convex design objectives}
-
-\paragraph{Regression–SE control (target the $X$–aligned error).} Two equivalent formulations:
-\[
-\min_{\symbf{\pi}}\ \sum_j \frac{w_j}{\pi_j}\quad\text{s.t.}\quad \sum_j \pi_j=K,\ \ \pi_{\min}\le\pi_j\le 1,
-\qquad\Rightarrow\qquad
-\pi_j\ \propto\ \sqrt{w_j}\ \text{ (clamp to $[\pi_{\min},1]$)},
-\]
-or
-\[
-\min_{\symbf{\pi}}\ \sum_j \pi_j\quad\text{s.t.}\quad \sum_j \frac{w_j}{\pi_j}\ \le\ \rho^2+\sum_j w_j,\ \ \pi_{\min}\le\pi_j\le 1.
-\]
-Both are convex; both admit heterogeneous label costs by minimizing $\sum_j c_j\pi_j$, which tilts the KKT solution to $\pi_j\propto \sqrt{w_j/c_j}$. The inclusion floor $\pi_{\min}>0$ ensures HT is well–defined for any item that can affect the estimators (i.e., whenever some $q_{ij}>0$ below).
-
-\paragraph{Row–SE control (guarantee per–row precision).} Let $q_{ij}=(c_{ij}/T_i)^2$. Under Poisson sampling,
-\[
-\Var(u_i)\ \le\ \sum_{j=1}^m \frac{1-\pi_j}{\pi_j}q_{ij}
-=\sum_{j=1}^m \frac{q_{ij}}{\pi_j}-\sum_{j=1}^m q_{ij}.
-\]
-Given tolerances $\varepsilon_i>0$ and $\pi_{\min}>0$,
+Under independent item sampling the estimator's error is $\widehat\beta-\beta^*=\sum_j(I_j/\pi_j-1)h_ja_j$, so for a positive semidefinite $W$ the loss $\tr[W(\widehat\beta-\beta^*)(\widehat\beta-\beta^*)^\top]$ has exact design risk
 \begin{equation}
-\label{eq:minlabels-row}
-\min_{\pi\in[\pi_{\min},1]^m}\ \sum_{j=1}^m \pi_j
-\quad\text{s.t.}\quad
-\sum_{j=1}^m \frac{q_{ij}}{\pi_j} \ \le \ \varepsilon_i^2 + \sum_{j=1}^m q_{ij}\ \ \forall i,
+\label{eq:risk}
+\E_p\,L=\sum_{j=1}^m \frac{1-\pi_j}{\pi_j}\,b_j,\qquad b_j=(h_j^\top W h_j)\,a_j^2 .
 \end{equation}
-which is convex because $1/\pi$ is convex and $q_{ij}\ge 0$. With costs $c_j>0$, minimize $\sum_j c_j\pi_j$. The KKT shape (ignoring box constraints) is
-\[
-\pi_j^\star \ \propto\ \sqrt{\frac{\sum_i \mu_i\,q_{ij}}{c_j}},\qquad \mu_i\ge 0,
-\]
-then clamp to $[\pi_{\min},1]$. Extremely small $T_i$ can force large budgets for tight $\varepsilon_i$; choosing $\varepsilon_i\propto 1/\sqrt{T_i}$ equalizes effort per effective observation.
+The criterion enters only through $b_j$, and it has to be chosen. Fitted-value loss sets $W=X^\top X$ and gives $g_j^\top(X^\top X)^{-1}g_j$ for $g_j=X^\top v_j$. Coefficient loss sets $W=I$ and gives $h_j^\top h_j=g_j^\top(X^\top X)^{-2}g_j$. A contrast $L^\top\beta^*$ sets $W=LL^\top$ and gives $\|L^\top h_j\|^2$. All three yield square-root allocations and convex programs. On a well-conditioned $X^\top X$ they rank items almost identically; they diverge when $X^\top X$ is far from a scaled identity and the $h_j$ span several directions, where in our experiments they disagreed on roughly a fifth of a top-$K$ set. There is no target-free notion of which items are worth labeling, and reporting one criterion while computing another is a mistake we have made ourselves.
 
-\paragraph{Prevalence–aware tightening.} If at most an $\alpha$ fraction of items are positive ($M=\lceil \alpha m\rceil$), replace sums by the \emph{sum of the $M$ largest} terms using the convex epigraph identity
-\[
-\sum_{k=1}^{M} t_{(k)}=\min_{\tau\in\mathbb{R}}\left\{M\tau+\sum_{j=1}^m (t_j-\tau)_+\right\},
-\]
-a standard trick in convex optimization~\citep[see][]{BoydVandenberghe2004}. Use $t_j=(1/\pi_j-1)w_j$ for regression–SE and $t_{ij}=(1/\pi_j-1)q_{ij}$ for row–SE. This insures against the worst $\alpha m$ items while preserving convexity. If prior probabilities $\Pr(a_j=1)$ are available, an \emph{expected–risk} variant replaces $a_j^2$ by $\Pr(a_j=1)$, yielding another convex program. For minimax/partial–ID intuition, see \citet{Manski2003}.
+\paragraph{Labels that need no pilot.} For a mutually exclusive taxonomy $a_j^\top a_j=1$, so $b_j=h_j^\top W h_j$ is known before any labeling begins and the optimal design can be computed from usage data alone. When labels are counts rather than class indicators the squared norms vary and a pilot sample or a proxy is required; \S\ref{sec:evidence} measures what that knowledge is worth.
 
-\section{The optimal certainty core is available in closed form}
-\label{sec:core}
+\paragraph{When the criterion cannot matter.} If every $h_j$ points in the same direction and items differ only in magnitude, then $b_j\propto\|h_j\|^2$ under every $W$, all criteria induce the same ordering, and the choice of estimand is immaterial. Expected counts of the form $\text{activity}_i\times\text{popularity}_j$ produce exactly this degeneracy, and a simulation built on such a population will report every design as equivalent whatever it measures. The singular values of the column-normalized $H$ diagnose it, read against a noise floor of order $1/\sqrt{\bar c}$ for average count $\bar c$, since integer counts inject spurious directions at that scale.
 
-The take--all/take--some design is familiar from business surveys, and its usual weakness is that the boundary is set by judgment. Under \eqref{eq:decomposition} it need not be. Order the contributions $b_1\ge b_2\ge\cdots\ge b_m$, label the first $H$ with certainty, and give every remaining item the common probability $p_H=(K-H)/(m-H)$. Writing $S_H=\sum_{j>H}b_j$, the Poisson risk is
+\section{Designs}
+
+\paragraph{Clipped probability proportional to size.} Minimizing \eqref{eq:risk} subject to $\sum_j c_j\pi_j=K$ and $\pi_j\le 1$ gives
+\begin{equation}
+\label{eq:pps}
+\pi_j^\star=\min\!\left\{1,\ \lambda\sqrt{b_j/c_j}\right\}
+\end{equation}
+for the $\lambda$ that exhausts the budget. The cap is not a separate rule for large items: the set on which it binds \emph{is} the certainty head, and in a heavy-tailed population it absorbs most of the budget. The square-root rule also settles the unbiasedness constraint without further intervention, since it assigns strictly positive probability to every item with $b_j>0$. A probability floor is therefore unnecessary for unbiasedness, and imposing one moves the design away from minimum risk; its only legitimate purpose is to bound the largest weight.
+
+\paragraph{A certainty core with a uniform tail.} Order the contributions $b_1\ge\cdots\ge b_m$, take the first $H$ with certainty, and give the remainder the common probability $p_H=(K-H)/(m-H)$. With $S_H=\sum_{j>H}b_j$ the risk is
 \begin{equation}
 \label{eq:core}
 R(H)=\frac{m-K}{K-H}\,S_H ,
 \end{equation}
-so the boundary is found by evaluating at most $K$ cutoffs rather than chosen, and promoting one more item into the core pays exactly when
-\[
-b_{H+1}>\frac{S_H}{K-H}.
-\]
-Two qualifications. Equation \eqref{eq:core} is exact when the tail is drawn as independent Bernoulli trials at $p_H$; drawn instead as a fixed--size simple random sample of $K-H$, the true variance is smaller, because fixing the count removes the sample--size variability and the contributions enter centered on the tail mean. Read \eqref{eq:core} as a planning criterion and an upper bound for the fixed--size draw, whose optimum it approximates. And the design is never better than unrestricted clipped PPS, which is free to vary the tail probabilities. Its appeal is operational: a uniform tail is a simple random sample, easy to specify to a labeling vendor, easy to audit, and equipped with a variance estimator any reader can verify.
+so the boundary follows from evaluating at most $K$ cutoffs, and promoting one more item into the core pays exactly when $b_{H+1}>S_H/(K-H)$. Two qualifications. Equation \eqref{eq:core} is exact for a Bernoulli tail; drawn as a fixed-size simple random sample the variance is smaller, because fixing the count removes the sample-size variability and contributions enter centered. Read it as a planning criterion and an upper bound. And the design cannot beat \eqref{eq:pps}, which varies the tail probabilities. Its appeal is operational: a uniform tail is a simple random sample, easy to specify to a vendor, easy to audit, and equipped with a variance estimator any reader can check.
 
-\section{Designs used in experiments}
+\paragraph{Turning probabilities into a list.} A design is not a draw. Include every item with $\pi_j^\star=1$, then draw the remainder to exact size with first-order inclusions $\pi^\star$ and balancing auxiliaries $g_j$, using the cube method \citep{DevilleTille2004}. Balancing drives $\sum_j(I_j/\pi_j-1)g_j$ toward zero, which shrinks the realized error for any labels whatsoever, and costs nothing in unbiasedness because the first-order probabilities are unchanged. Estimation then uses the probabilities the sampler \emph{delivered}. If a sampler rescales the requested probabilities, as a fixed-size sampler must, the delivered vector is the one that makes \eqref{eq:ht} unbiased.
 
-All designs below use the \emph{same estimator} (HT shares over items); they differ only in how $\pi$ is chosen.
-\begin{itemize}[leftmargin=*, itemsep=2pt]
-\item \textsc{HT–Uniform} (fixed budget $K$): $\pi_j=K/m$ (clamped), then sample a fixed–size set of $K$ items.
-\item \textsc{HT–$\|g\|$} (fixed $K$): $\pi_j\propto \|g_j\|_2$; clamp and rescale so $\sum_j \pi_j=K$.
-\item \textsc{HT–A–Opt} (fixed $K$): $\pi_j\propto \sqrt{w_j}$; clamp and rescale so $\sum_j \pi_j=K$.
-\item \textsc{Min–Labels (Reg–SE cap)}: solve $\min\sum_j \pi_j$ s.t.\ $\sum_j w_j/\pi_j\le \rho^2+\sum_j w_j$ and $\pi_{\min}\le\pi_j\le 1$.
-\item \textsc{Min–Labels (Row–SE caps)}: solve \eqref{eq:minlabels-row} (optionally joint with the regression cap).
-\item \textsc{Prevalence–Aware} variants: in either program, replace the relevant sum by the top–$M$ aggregate via the epigraph.
-\end{itemize}
+\paragraph{The reverse problem.} Fixing a per-unit precision instead of a budget, and minimizing the number of labels subject to $\sum_j q_{ij}/\pi_j\le\varepsilon_i^2+\sum_j q_{ij}$ for $q_{ij}=V_{ij}^2$, is convex with the same square-root shape $\pi_j^\star\propto\sqrt{\sum_i\mu_iq_{ij}/c_j}$. It is always feasible, since $\pi\equiv 1$ makes the design variance vanish.
 
-\section{From probabilities to a concrete list of items to label}
+\section{Using a cheap classifier}
 
-Solving any program yields inclusion probabilities $\pi^\star=(\pi^\star_1,\dots,\pi^\star_m)$. To produce an explicit labeling list:
-\begin{enumerate}[leftmargin=*, itemsep=2pt]
-\item \textbf{Deterministic picks.} Include all items with $\pi^\star_j\ge 0.99$. Let $K=\mathrm{round}(\sum_j \pi^\star_j)$ and $K_{\!\mathrm{rem}}=K-\#\{j:\pi^\star_j\ge 0.99\}$.
-\item \textbf{Balanced fixed–size draw.} On the rest, draw exactly $K_{\!\mathrm{rem}}$ items with first–order inclusions $\pi^\star$ and auxiliaries $g_j$ (or $[g_j;1]$). A standard choice is the cube method (fixed–size phase) or any conditional–Poisson scheme with balancing~\citep{DevilleTille2004}. This targets
-\[
-\sum_j \Big(\tfrac{I_j}{\pi^\star_j}-1\Big)g_j\approx 0,
-\]
-shrinking the realized $X^\top u$ for any $a$.
-\item \textbf{Estimation.} Use HT weights $1/\pi^\star_j$ when computing shares; this preserves exact design–unbiasedness. (Optional: a post–sampling calibration step can further reduce variance at the cost of a negligible finite–sample bias~\citep{DevilleSarndal1992}.)
-\end{enumerate}
-\emph{Adaptive sampling caveat.} If sampling proceeds in waves using already observed labels $a_j$, the final inclusion probabilities must reflect the adaptive design for HT to remain unbiased.
-
-\section{Using a cheap classifier without surrendering unbiasedness}
-
-Suppose a frozen classifier supplies a prediction $\mu_j$ for \emph{every} item, at negligible cost: a domain name predicts a site category, a surname predicts an ethnicity. The difference estimator
+Suppose a frozen classifier supplies a prediction $\mu_j$ for every item at negligible cost. The difference estimator
 \begin{equation}
 \label{eq:diff}
-\widehat\beta_\mu=\sum_{j=1}^m h_j\mu_j+\sum_{j=1}^m \frac{I_j}{\pi_j}\,h_j\,(a_j-\mu_j)
+\widehat\beta_\mu=\sum_{j=1}^m h_j\mu_j+\sum_{j=1}^m\frac{I_j}{\pi_j}h_j(a_j-\mu_j)
 \end{equation}
-is design--unbiased for $\beta^*$ conditional on the classifier, whatever the classifier says, because the first term is a known constant and the second corrects it without bias. A poor $\mu$ costs variance and never bias, so there is no risk in supplying one; this is the sampling analogue of the point that plugging predictions in directly does not work \citep{FongTyler2021}, with the correction made by design rather than by a model of the prediction error. The risk becomes $\sum_j \tfrac{1-\pi_j}{\pi_j}(h_j^\top W h_j)\,\E(a_j-\mu_j)^2$, so acquisition should target downstream influence times residual label uncertainty. For a calibrated binary probability $p_j$ that residual is $p_j(1-p_j)$, and for calibrated one--hot probabilities it is $1-\|\mu_j\|^2$: in both cases known without labels, so the design can be computed before any labeling begins.
+is design-unbiased whatever the classifier says, because the first term is a known constant and the second corrects it without bias. A poor classifier costs variance and never bias, so there is no risk in supplying one. The risk becomes $\sum_j\frac{1-\pi_j}{\pi_j}(h_j^\top Wh_j)\,\E(a_j-\mu_j)^2$, so acquisition should target influence times residual label uncertainty: for a calibrated binary probability $p_j$ that residual is $p_j(1-p_j)$, and for calibrated one-hot probabilities it is $1-\|\mu_j\|^2$, both known without labels. Plugging predictions directly into a regression instead is what produces the bias and overconfidence documented by \citet{FongTyler2021}; here the correction is made by the design rather than by a model of the prediction error.
 
-\section{Inference and variance estimation}
+\section{When the label builds a covariate}
+\label{sec:covariate}
+
+Everything above puts the purchased label in the outcome. Reverse it, and the central guarantee fails. Suppose the target is $\gamma$ in
+\[
+z_i=\gamma\,y_i+x_i^\top\delta+\epsilon_i
+\]
+where $y$ must again be constructed from labels. Substituting an unbiased $\widehat y=y+u$ regresses on a covariate measured with error, so $\gamma$ is \emph{attenuated} and not merely noisy. Unbiasedness of $\widehat y$ offers no protection, and the attenuation does not shrink with the size of the panel: it shrinks only with the labeling budget. On a synthetic population with $\gamma=2$ we measure a naive estimate of about $1.4$.
+
+What makes the problem tractable is that the measurement error was created deliberately. The design chose $\pi$, so $\Var(u)=\sum_j\frac{1-\pi_j}{\pi_j}a_j^2v_jv_j^\top$ is known up to the labels, and the sample estimates it without bias. Residualizing on the controls with $M_X$, the naive slope $\widetilde y^\top\widetilde z/\widetilde y^\top\widetilde y$ has a denominator inflated by $\E[u^\top M_Xu]$, and subtracting the estimate
+\[
+\widehat{\Delta}=\sum_{j\in S}\frac{1-\pi_j}{\pi_j^2}\,a_j^2\,\bigl(v_j^\top M_X v_j\bigr)
+\]
+removes the first-order attenuation. The correction is a ratio with a reduced denominator, so it overshoots: in the same experiment it moves an estimate that was $30$ percent low to one about $10$ percent high. That is a large improvement and not an exact fix, and intervals should come from redrawing the design rather than from a closed form.
+
+The design target changes too, and in an instructive direction. The outcome case rewards items whose exposure is \emph{aligned} with $X$, through $h_j^\top W h_j$. A covariate's coefficient is identified by the variation in $\widetilde y$ that survives residualizing, so the relevant quantity is $v_j^\top M_X v_j=\|v_j\|^2-h_j^\top X^\top X h_j$, the exposure \emph{orthogonal} to $X$. In principle these are complementary. In practice they are not far apart, because with many more units than covariates the orthogonal part dominates the squared norm; in our experiments the two scores correlate above $0.99$ and the better-targeted design improves root mean squared error by under ten percent. The lesson is the reverse of the outcome case: here the choice of design matters little and the failure to correct for attenuation matters a great deal.
+
+\section{Inference}
 \label{sec:inference}
 
-Under independent item sampling, $\widetilde\Delta(\symbf{\pi})$ provides a conservative covariance bound for whitened coefficients; for without–replacement fixed–size designs, Sen–Yates–Grundy variance formulas with joint inclusions $(\pi_{jk})$ yield tighter design–based variance estimators for HT totals and, by the delta method, for $\widehat\beta$~\citep{Sen1953,YatesGrundy1953}. In practice:
-\begin{itemize}[leftmargin=*, itemsep=2pt]
-\item Report design–based SEs using $\widetilde\Delta(\symbf{\pi})$ or a SYG estimator adapted to the actual design.
-\item As a conservative check, use item–cluster robust SEs for OLS on $\widehat y$ (errors are shared across rows via items).
-\item Efficiency upgrade: generalized least squares (GLS) with an estimated $\Sigma\approx \Var(u)$, i.e.,
+\paragraph{Two variances, and only one is for sale.} Writing $\sigma^2$ for the residual variance of $y$ on $X$,
 \[
-\widehat\beta_{\mathrm{GLS}}=(X^\top \Sigma^{-1} X)^{-1}X^\top \Sigma^{-1}\widehat y,
+\Var(\widehat\beta)=\underbrace{\sigma^2(X^\top X)^{-1}}_{\text{$n$ units}}+\underbrace{\textstyle\sum_j\frac{1-\pi_j}{\pi_j}b_j}_{\text{$K$ labels}} .
 \]
-is unbiased (design–based) and can dominate OLS when shared–noise is strong; $\Sigma$ can be approximated under the Poisson bound or via a fixed–size SYG approximation.
-\end{itemize}
-Balanced/fixed–size designs induce negative dependence among draws and reduce variance relative to Poisson; our Poisson–based caps are therefore conservative. On the panel of \S\ref{sec:evidence} the reported standard error exceeds the realized spread of a cube draw by 18 to 43 percent, and coverage runs 0.96 to 0.99 against a nominal 0.95.
+Only the second term falls as the budget grows, so the ratio is a stopping rule: once the design term sits well below the first, further labels buy almost nothing and the binding constraint is the size of the panel. Estimating $\sigma^2$ requires care, because the residuals of $\widehat y$ on $X$ carry design noise as well as regression error. That noise contributes $\sum_j\frac{1-\pi_j}{\pi_j}a_j^2(\|v_j\|^2-h_j^\top X^\top Xh_j)$ to the residual sum of squares; subtracting it leaves an unbiased estimator rather than an inflated one.
 
-\paragraph{Two variances, only one of which a budget can move.} Reporting a single standard error for $\widehat\beta$ conflates two sources. Writing $\sigma^2$ for the residual variance of $y$ on $X$,
-\[
-\Var(\widehat\beta)\;=\;\underbrace{\sigma^2(X^\top X)^{-1}}_{\text{$n$ units}}\;+\;\underbrace{\textstyle\sum_j \frac{1-\pi_j}{\pi_j}b_j}_{\text{$K$ labels}} .
-\]
-Only the second term falls as $K$ grows, so their ratio is a stopping rule: once the design term sits well below $\sigma^2(X^\top X)^{-1}$, further labels buy almost nothing, and the binding constraint is the size of the panel rather than the labeling budget. Estimating $\sigma^2$ needs care, because the residuals of $\widehat y$ on $X$ carry design noise as well as regression error. That noise contributes $\sum_j \tfrac{1-\pi_j}{\pi_j}a_j^2\,(\|v_j\|^2-h_j^\top X^\top X h_j)$ to the residual sum of squares; subtracting it leaves an unbiased estimator of $\sigma^2$ rather than an inflated one.
+\paragraph{Fixed-size draws are covered conservatively.} The Poisson expression \eqref{eq:risk} is exact for independent Bernoulli trials. Fixing the sample size and balancing on auxiliaries both remove variation it still counts, so a cube draw's true variance is smaller than the figure reported. Measured on the panel of \S\ref{sec:evidence}, the reported standard error exceeds the realized spread by \CubeSeRatioLo{} to \CubeSeRatioHi{} percent and coverage runs to \CubeCoverage{} against a nominal $0.95$. Sen--Yates--Grundy estimators with joint inclusion probabilities would tighten this \citep{Sen1953,YatesGrundy1953}; we report the conservative bound.
 
-\paragraph{Trading bias for variance deliberately.} Shrinking the HT weight by $\alpha_j\in[0,1]$, so that item $j$ enters with weight $\alpha_j/\pi_j$, is weight trimming in the sense of \citet{Potter1990} and \citet{Beaumont2013}. It is defensible here because the price is computable in advance: $\|\sum_j(1-\alpha_j)h_ja_j\|\le\sum_j(1-\alpha_j)\|h_j\|\,|a_j|$, which for a one--hot taxonomy needs no labels at all, and which the classifier of \eqref{eq:diff} converts from a bound into an estimate. Setting $\alpha_j=\pi_j$, so that every labeled item enters with weight one and unlabeled items are treated as zeros, is the common practice of zero--filling what could not be labeled; it is a point on this frontier, and \S\ref{sec:evidence} finds it is never the best one.
+\paragraph{Buying bias on purpose.} Shrinking the weight so item $j$ enters with $\alpha_j/\pi_j$ is weight trimming \citep{Potter1990,Beaumont2013}. It is defensible here because the price is computable in advance: the bias is bounded by $\sum_j(1-\alpha_j)\|h_j\|\,|a_j|$, which for a mutually exclusive taxonomy needs no labels, and which the classifier of \eqref{eq:diff} converts from a bound into an estimate. Setting $\alpha_j=\pi_j$, so every labeled item enters with weight one and unlabeled items are treated as zeros, is the common practice of zero-filling; it is a point on this frontier and \S\ref{sec:evidence} finds it is never the best one.
 
 \section{Evidence}
 \label{sec:evidence}
 
-We evaluate on a population whose labels are entirely known, so that every design is scored against the same fixed target rather than against an estimate of one. The panel is YouGov Pulse: 1{,}134 US adults metered for June 2022, 6{,}236{,}834 visits across 64{,}074 registered domains \citep{PulseData}. Each domain was submitted to Blacklight for a seven--measure tracking audit, and 34{,}078 scans succeeded, covering 53.2 percent of domains and 76.4 percent of visits \citep{BlacklightData}. The evaluation frame is those 34{,}078 domains; it is 0.27 percent dense. The outcome is the published per--user exposure rate, which is exactly $y=Va$, and the regression is the published specification of exposure on gender, race, education, and age group. Fitting it on all 34{,}078 labels reproduces the published coefficients to within 0.004 against a stated replication tolerance of 0.02, which establishes that the exercise below targets the same quantity.
+We evaluate on a population whose labels are entirely known, so that every design is scored against the same fixed target rather than against an estimate of one. The panel is YouGov Pulse: \PanelUsers{} US adults metered for June 2022, \PanelVisits{} visits across \PanelDomains{} registered domains \citep{PulseData}. Each domain was submitted to Blacklight for a seven-measure tracking audit, and \LabeledDomains{} scans succeeded, covering \LabelCoverage{} percent of domains and \LabeledVisitShare{} percent of visits \citep{BlacklightData}. The evaluation frame is those domains, and it is \EvalDensity{} percent dense.
 
-With two label classes the estimand $\beta^*$ is $13\times 2$ and $\|\beta^*\|=11.1$. Each entry of Table~\ref{tab:evidence} is 300 independent Poisson draws from the same finite population, so the reported spread is design variance alone.
+The outcome is the published per-user exposure rate, which is exactly $y=Va$, and the regression is the published specification of exposure on gender, race, education, and age group. Fitting it on all \LabeledDomains{} labels reproduces the published coefficients to within $0.004$ against a stated replication tolerance of $0.02$, which establishes that the exercise targets the same quantity the substantive paper does. With \NumClasses{} label measures reduced to the two headline ones, $\beta^*$ is $\BetaRows\times\BetaCols$ and $\|\beta^*\|=\TruthNorm$. Each row of Table~\ref{tab:evidence} is \Reps{} independent Poisson draws from the same finite population, so the reported spread is design variance alone.
 
 \begin{table}[t]
-\centering
-\small
-\begin{tabular}{rlrrrr}
-\toprule
-$K$ & Design & RMSE & RMSE/SRS & Bias & Coverage \\
-\midrule
-250 & Uniform (SRS) & 52.9 & 1.000 & 2.6 & 0.869 \\
-250 & Core $+$ uniform tail & 25.6 & 0.483 & 1.2 & 0.912 \\
-250 & Clipped PPS & 5.97 & 0.113 & 0.24 & 0.942 \\
-250 & Clipped PPS, $a_j^2$ known & 2.13 & 0.040 & 0.14 & 0.949 \\
-\midrule
-1{,}000 & Uniform (SRS) & 26.4 & 1.000 & 1.5 & 0.872 \\
-1{,}000 & Core $+$ uniform tail & 7.02 & 0.266 & 0.47 & 0.937 \\
-1{,}000 & Clipped PPS & 2.29 & 0.087 & 0.13 & 0.945 \\
-1{,}000 & Clipped PPS, $a_j^2$ known & 0.604 & 0.023 & 0.028 & 0.950 \\
-\midrule
-2{,}000 & Uniform (SRS) & 19.1 & 1.000 & 0.79 & 0.877 \\
-2{,}000 & Core $+$ uniform tail & 3.10 & 0.163 & 0.15 & 0.943 \\
-2{,}000 & Clipped PPS & 1.18 & 0.062 & 0.047 & 0.952 \\
-2{,}000 & Clipped PPS, $a_j^2$ known & 0.268 & 0.014 & 0.017 & 0.947 \\
-\bottomrule
-\end{tabular}
-\caption{Labeling designs scored against the complete--label coefficient matrix $\beta^*$, whose own norm is 11.1. RMSE and bias are Frobenius norms of the error in the same units as $\beta^*$; coverage is the share of nominal 95 percent intervals containing the truth, pooled over 26 coefficients. Population: 1{,}132 panelists and 34{,}078 domains with known Blacklight labels; 300 Poisson draws per row. Budgets of 100 and 500 are omitted for space and behave as interpolation suggests.}
+\centering\small
+\input{generated/tab_evidence}
+\caption{Labeling designs scored against the complete-label coefficient matrix $\beta^*$, whose own Frobenius norm is \TruthNorm{}. RMSE and bias are Frobenius norms of the error in $\widehat\beta$, in the units of $\beta^*$. Coverage is the share of nominal 95 percent intervals containing the truth, pooled over \NumCoefficients{} coefficients. Core is the number of items the cap in \eqref{eq:pps} places at probability one, which the design produces rather than the analyst choosing. Population: \EvalUsers{} panelists and \LabeledDomains{} domains with known tracking labels; \Reps{} Poisson draws per row. Budgets of 100 and 500 are omitted for space and interpolate.}
 \label{tab:evidence}
 \end{table}
 
-Four features of Table~\ref{tab:evidence} are worth drawing out. Every design is unbiased, including the uniform one: at $K=250$ its bias of 2.6 sits within one Monte Carlo standard error of zero. The designs differ in variance, not in bias, which is what a probability design guarantees and what distinguishes this exercise from zero--filling. Second, the efficiency ratio is flat in the budget: clipped PPS holds between 0.062 and 0.113 of the uniform error across a twenty--fold range of $K$, so the gain is a property of the design and not of a fortunate operating point. Third, intervals from a good design cover and intervals from a poor one do not. Uniform sampling covers at 0.87 against a nominal 0.95, and the cause is not a faulty variance estimator, which is unbiased to within one percent over 4{,}000 replicates. What fails is the normal approximation: under uniform sampling a few very high influence domains either enter the sample or do not, leaving $\widehat\beta$ skewed at $\pm 1.6$ with a variance estimate whose own standard deviation is twice its mean, against a skew of 0.1 and a relative standard deviation of 0.3 under PPS. The design that shrinks the interval is also the design that makes it mean something.
+\begin{figure}[t]
+\centering
+\includegraphics{generated/fig_efficiency.pdf}
+\caption{Accuracy and interval validity against the labeling budget, for the four designs of Table~\ref{tab:evidence}. Left: Frobenius norm of the error in $\widehat\beta$, with a reference line at the norm of $\beta^*$ itself, so a series near the line is no better than reporting zero. Right: coverage of the nominal 95 percent interval, reference line at $0.95$. Both axes are logarithmic in the budget. Population and replication as in Table~\ref{tab:evidence}.}
+\label{fig:efficiency}
+\end{figure}
 
-Fourth, knowing $a_j^2$ is worth a further factor of three. Blacklight labels are counts rather than class indicators, and their squared norms run from a median of 10 to a maximum of 72{,}262, so the simplification $a_j^\top a_j=1$ that makes $b_j$ exact for a mutually exclusive taxonomy does not apply. That gap measures what a pilot sample or the classifier of \eqref{eq:diff} is worth on this population.
+Four features of Table~\ref{tab:evidence} and Figure~\ref{fig:efficiency} carry the argument.
 
-Table~\ref{tab:frontier} traces the shrinkage frontier of the preceding section. The same domains are labeled in every row; only the weight differs.
+Every design is unbiased, including the poor one. Uniform sampling's bias at $K=250$ sits within a Monte Carlo standard error of zero. The designs differ in variance and not in bias, which is what a probability design guarantees and what separates this exercise from zero-filling, whose bias is real and unbounded.
+
+The efficiency ratio is flat in the budget. Clipped PPS holds between \EffRatioLo{} and \EffRatioHi{} of the uniform error across a twentyfold range of $K$, so the gain is a property of the design rather than of a fortunate operating point. At $K=2{,}000$ its error is \RmseAtTwoThousand{}, or \RelErrAtTwoThousand{} percent of the size of the quantity being estimated, from labeling six percent of what was actually labeled.
+
+Intervals from a good design cover and intervals from a poor one do not. Uniform sampling covers at \SrsCoverageLo{} to \SrsCoverageHi{} against a nominal $0.95$, and the cause is not a faulty variance estimator: over repeated draws it recovers the true variance to a ratio of \SrsVarRatio{}. What fails is the normal approximation. Under uniform sampling a few very high influence domains either enter the sample or do not, leaving $\widehat\beta$ skewed at \SrsSkew{} with a variance estimate whose own standard deviation is \SrsVarDispersion{} times its mean; under PPS those figures are \PpsSkew{} and \PpsVarDispersion{}. The design that shrinks the interval is also what makes the interval mean anything, and reporting a standard error from a badly allocated sample is the more dangerous of the two failures because it looks like an answer.
+
+Knowing the squared label norms is worth a further factor of \OracleFactor{}. Blacklight labels are counts rather than class indicators, with squared norms running from a median of \NormMedian{} to a maximum of \NormMax{}, so the simplification $a_j^\top a_j=1$ does not apply. That gap measures what a pilot sample or the classifier of \eqref{eq:diff} is worth on this population, and it is the largest single improvement available.
 
 \begin{table}[t]
-\centering
-\small
-\begin{tabular}{rrrrr}
-\toprule
-$K$ & $\alpha$ & Bias & SD & RMSE \\
-\midrule
-250 & 0.00 & 5.86 & 1.01 & 5.95 \\
-250 & 0.50 & 2.91 & 3.29 & \textbf{4.39} \\
-250 & 0.75 & 1.44 & 4.62 & 4.84 \\
-250 & 1.00 & 0.245 & 5.97 & 5.97 \\
-\midrule
-1{,}000 & 0.00 & 3.72 & 0.599 & 3.76 \\
-1{,}000 & 0.50 & 1.87 & 1.38 & 2.32 \\
-1{,}000 & 0.75 & 0.947 & 1.83 & \textbf{2.06} \\
-1{,}000 & 1.00 & 0.159 & 2.31 & 2.31 \\
-\midrule
-4{,}000 & 0.00 & 1.53 & 0.188 & 1.55 \\
-4{,}000 & 0.50 & 0.772 & 0.349 & 0.848 \\
-4{,}000 & 0.90 & 0.165 & 0.506 & \textbf{0.532} \\
-4{,}000 & 1.00 & 0.0331 & 0.546 & 0.547 \\
-\bottomrule
-\end{tabular}
-\caption{Bias and variance as the Horvitz--Thompson weight is shrunk toward one. At $\alpha=1$ the weight is $1/\pi_j$ and the estimator is unbiased; at $\alpha=0$ every labeled item enters with weight one, which is what zero--filling unlabeled items amounts to. Bold marks the smallest RMSE in each block. Same population and draws as Table~\ref{tab:evidence}; 200 replicates per row.}
+\centering\small
+\input{generated/tab_frontier}
+\caption{Bias and variance as the Horvitz--Thompson weight is shrunk. The same items are labeled in every row and only the weight differs: at $\alpha=1$ it is $1/\pi_j$ and the estimator is unbiased, and at $\alpha=0$ every labeled item enters with weight one, which is what zero-filling the unlabeled amounts to. Bold marks the smallest RMSE in each block. Population as in Table~\ref{tab:evidence}; \FrontierReps{} replicates per row.}
 \label{tab:frontier}
 \end{table}
 
-The minimum is interior and moves toward $\alpha=1$ as the budget grows, cutting mean squared error by 26 percent at $K=250$, 11 percent at $K=1{,}000$, and 3 percent at $K=4{,}000$. Regularization helps most where the variance is worst. Two cautions attach. The minimizing $\alpha$ depends on the unknown $\beta^*$, and while the bias term is estimable from the sample, that plug--in is itself noisy. And $\alpha=0$ is optimal at no budget we examined, with a bias running from 14 to 53 percent of $\|\beta^*\|$: dropping unlabeled items is a real point on the frontier and never a good one.
+Table~\ref{tab:frontier} traces the shrinkage frontier. Its minimum is interior and moves toward $\alpha=1$ as the budget grows, cutting mean squared error by \ShrinkGainSmall{} percent at $K=250$, \ShrinkGainMid{} percent at $K=1{,}000$, and \ShrinkGainLarge{} percent at $K=4{,}000$: regularization helps most where the variance is worst. Two cautions attach. The minimizing $\alpha$ depends on the unknown $\beta^*$, and while the bias is estimable from the sample, that plug-in is itself noisy. And $\alpha=0$ is optimal at no budget we examined, with a bias running from \ZeroFillBiasLo{} to \ZeroFillBiasHi{} percent of $\|\beta^*\|$. Dropping the unlabeled is a real point on the frontier and never a good one.
 
 \section{Related work}
 
-The geometry of a certainty head with a sampled tail is not new. Business surveys have long used take--all strata for large units and probability--sampled take--some strata for the rest; case--cohort designs collect expensive covariates for every case plus a random subcohort \citep{Prentice1986}; and high--influence probability sampling selects units by their contribution to the eventual regression estimator, with Poisson probabilities proportional to the square root of anticipated squared influence \citep{Clark2022}. What is specific here is that the purchased label belongs to an \emph{entity reused across many records}, so that its value is fixed by a known entity--to--record map and by the estimand, and \eqref{eq:decomposition} makes that value exact rather than anticipated.
+The geometry of a certainty head with a sampled tail is old. Business surveys take all the large units and probability-sample the rest; case-cohort designs collect expensive covariates for every case plus a random subcohort \citep{Prentice1986}; high-influence probability sampling selects units by their contribution to the eventual regression estimator, with Poisson probabilities proportional to the square root of anticipated squared influence \citep{Clark2022}. The square-root allocation itself goes back to optimal experimental design \citep{Kiefer1959} and, for allocation across strata, to \citet{Neyman1934}. Our contribution is not that shape but its exactness: because the purchased label attaches to an entity reused through a known map, \eqref{eq:decomposition} makes an item's contribution a computed quantity rather than an anticipated one, which is what turns the certainty boundary into arithmetic and makes the choice of criterion consequential.
 
-Our setting also transposes classical ideas from two adjacent literatures. In \emph{two–phase (validation) designs for regression}, one optimizes a subsample of \emph{units} to estimate regression parameters under cost constraints, often via influence–function–weighted allocations, GREG, or semiparametric efficient scores; see, e.g., \citet{ChenLumley2022,McIsaacCook2015}. Here we optimize a subsample of \emph{items} to construct a derived outcome and then regress, but the design logic (auxiliaries, calibration/balancing, convex programs) is analogous. In \emph{balanced sampling and calibration}, the cube method and GREG aim to match auxiliary totals and reduce realized variance without changing first–order inclusions; that is exactly our goal when we drive $\sum_j (\tfrac{I_j}{\pi_j}-1)g_j$ towards zero~\citep{DevilleSarndal1992,DevilleTille2004}. Finally, \emph{optimal experimental design} (A–optimality) motivates the square–root rule~\citep{Kiefer1959}, and \emph{randomized sketching} (leverage–score sampling) offers a useful contrast: those sample \emph{rows of $X$} to approximate least–squares on full data, while we sample \emph{columns (items)} to construct $y$ itself~\citep{DrineasMahoney2016}. For broader sampling foundations, see \citet{Neyman1934}.
+Two adjacent literatures supply the machinery. Two-phase validation designs optimize a subsample of \emph{units} to estimate regression parameters under cost constraints, often through influence-function-weighted allocation \citep{ChenLumley2022,McIsaacCook2015}; we optimize a subsample of \emph{items} used to construct the outcome. Balanced sampling and calibration match auxiliary totals and reduce realized variance without changing first-order inclusions \citep{DevilleSarndal1992,DevilleTille2004}, which is exactly what \S4 asks of the cube draw. Randomized sketching offers a useful contrast: leverage-score methods sample rows of $X$ to approximate a least-squares fit on data already in hand \citep{DrineasMahoney2016}, whereas we sample columns in order to construct the outcome at all. Finally, \S\ref{sec:covariate} connects to work on machine predictions used as regression inputs \citep{FongTyler2021}; that literature corrects an estimator downstream of a fixed prediction, while the design here chooses which predictions to replace with truth.
 
-\section{Assumptions and caveats}
+\section*{Software}
 
-Labels, once observed, are accurate; item selection is independent of unknown $a_j$ but may depend on $(C,X)$.\footnote{If adaptive designs use realized labels, HT remains unbiased only if final inclusion probabilities correctly reflect that adaptivity.} If $X^\top X$ is ill–conditioned, use $w_j=g_j^\top (X^\top X+\lambda I)^{-1}g_j$; convexity and numerics improve. Choose $\pi_{\min}>0$ so that any item that can affect estimators has nonzero inclusion. Balanced/fixed–size designs reduce variance relative to Poisson; Poisson–based caps are conservative. If label misclassification is present, HT targets the noisy trait unless corrected.
+The methods are implemented in the open-source Python package \texttt{fewlab} \citep{fewlab}. Its API keeps apart the three objects this argument distinguishes. A \texttt{Study} holds $(C,X)$ and computes $H$; \texttt{Study.design} returns inclusion probabilities under a declared loss; \texttt{Study.draw} realizes them by Poisson trials or a balanced cube draw; and \texttt{Study.estimate} returns $\widehat\beta$ with both variance components. Only a realized draw is accepted by the estimator, since a ranking carries no inclusion probabilities and cannot be weighted; that constraint is enforced by the type rather than by documentation. Counts may be supplied in long format, one row per unit and item, which is how panels arrive and what keeps a matrix of the density reported in \S\ref{sec:evidence} from being materialized.
 
-\section*{Software and reproducibility}
+Every number in Tables~\ref{tab:evidence} and \ref{tab:frontier} and in Figure~\ref{fig:efficiency} is produced by \texttt{benchmarks/make\_exhibits.py} from a hashed extract distributed with the repository, in which panelist identifiers and domain names are replaced by salted digests. See \url{https://github.com/finite-sample/fewlab}.
 
-The methods are implemented in the open--source Python package \texttt{fewlab} \citep{fewlab}. The workflow separates the three objects that this paper's argument keeps distinct. \texttt{Study} holds $(C,X)$ and computes $H$; \texttt{Study.design(budget)} returns inclusion probabilities under a declared loss; \texttt{Study.draw} realizes them, by Poisson trials or by a fixed--size balanced cube draw; and \texttt{Study.estimate} returns $\widehat\beta$ with both variance components. Only a realized draw is accepted by the estimator, since a ranking of items by influence carries no inclusion probabilities and cannot be weighted. Counts may be supplied in long format, one row per unit and item, which is how panels arrive and what keeps a matrix of the density reported in \S\ref{sec:evidence} from being materialized.
+\section*{Assumptions and limits}
 
-Every number in Tables~\ref{tab:evidence} and \ref{tab:frontier} is reproduced by \texttt{benchmarks/run\_yg\_benchmark.py} against the hashed extract distributed with the repository, in which panelist identifiers and domain names are replaced by salted digests. See \url{https://github.com/finite-sample/fewlab}.
+Labels are assumed accurate once observed; under misclassification the estimator targets the noisy trait, and a correction is required. Item selection may depend on $(C,X)$ but not on the unknown labels, which holds by construction when $\pi$ is fixed before labeling and fails under multi-wave designs unless the final inclusion probabilities reflect the adaptivity. If $X^\top X$ is ill-conditioned, a ridge term keeps $H$ well defined at the cost of changing the estimand to the corresponding ridge coefficient. The variance formulas assume Poisson sampling and are conservative for fixed-size draws. And the evaluation frame consists of the domains whose scan succeeded, which is not a random subset of all domains; the exercise establishes what a design recovers relative to labeling that frame exhaustively, not what exhaustive labeling of the full population would have shown.
 
 \bibliographystyle{abbrvnat}
 \bibliography{few}

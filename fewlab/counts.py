@@ -151,6 +151,24 @@ class CountMatrix:
         np.add.at(out, self.cols, weights[self.rows] * self.values[:, None])
         return out.T
 
+    def column_sq_norms(self, scale: np.ndarray) -> np.ndarray:
+        """Compute `sum_i (scale_i * C_ij)^2` for every entity.
+
+        With `scale = 1/T` this is `||v_j||^2`, the total squared share entity
+        `j` accounts for across units. It is the piece the design needs when the
+        label enters a regression as a covariate rather than as the outcome,
+        because there the identifying variation is the part of `v_j` orthogonal
+        to the controls rather than the part aligned with them.
+
+        Args:
+            scale: Per-unit multiplier, one entry per unit.
+
+        Returns:
+            One squared norm per entity.
+        """
+        weighted = scale[self.rows] * self.values
+        return np.bincount(self.cols, weights=weighted**2, minlength=self.shape[1])
+
     def dense_columns(self, positions: np.ndarray) -> np.ndarray:
         """Materialize a subset of columns.
 

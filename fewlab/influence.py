@@ -32,7 +32,7 @@ from .constants import CONDITION_THRESHOLD, SMALL_RIDGE
 from .counts import CountMatrix, as_counts
 from .validation import validate_counts_matrix, validate_features_matrix
 
-LOSSES = ("coefficient", "prediction")
+LOSSES = ("coefficient", "prediction", "regressor")
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +45,9 @@ class Influence:
         G: `(p, m)` matrix `X' V`. Used as the balancing auxiliary by the cube
             sampler, where preserving `sum_j g_j` is the calibration target.
         XtX: `(p, p)` cross-product `X'X`, including any ridge term applied.
+        v_norm2: `(m,)` squared norms `||v_j||^2` of the share columns. Needed
+            only when the label enters as a covariate; see
+            `contribution_scores(loss="regressor")`.
         items: Entity identifiers, in the column order of `H` and `G`.
         ridge: Ridge value added to `X'X`, or None if the solve was exact.
     """
@@ -52,6 +55,7 @@ class Influence:
     H: np.ndarray
     G: np.ndarray
     XtX: np.ndarray
+    v_norm2: np.ndarray
     items: list[str]
     ridge: float | None
 
@@ -158,7 +162,12 @@ def influence(
         H = np.linalg.lstsq(XtX, G, rcond=None)[0]
 
     return Influence(
-        H=H, G=G, XtX=XtX, items=[str(c) for c in counts.columns], ridge=ridge
+        H=H,
+        G=G,
+        XtX=XtX,
+        v_norm2=counts.column_sq_norms(1.0 / T),
+        items=[str(c) for c in counts.columns],
+        ridge=ridge,
     )
 
 
@@ -187,8 +196,11 @@ def contribution_scores(
         infl: Influence decomposition from `influence`.
         loss: Which estimand to optimize for. `"coefficient"` sets `W = I` and
             targets the mean squared error of the coefficients themselves.
-            `"prediction"` sets `W = X'X` and targets fitted values. Ignored
-            when `contrast` is given.
+            `"prediction"` sets `W = X'X` and targets fitted values.
+            `"regressor"` targets the attenuation of a coefficient *on* the
+            constructed share, which depends on the exposure orthogonal to the
+            controls rather than aligned with them. Ignored when `contrast` is
+            given.
         contrast: Optional `(p, r)` matrix `L` targeting only `L'B`, giving
             `W = L L'` and `b_j = ||L' h_j||^2 (a_j' a_j)`. Use it when a
             single coefficient or a specific comparison is the estimand.
@@ -231,6 +243,13 @@ def contribution_scores(
         quad = np.einsum("pj,pj->j", H, H)
     elif loss == "prediction":
         quad = np.einsum("pj,pj->j", H, infl.XtX @ H)
+    elif loss == "regressor":
+        # When the label enters the regression as a covariate rather than as
+        # the outcome, the coefficient on it is identified by the variation in
+        # the constructed variable that survives residualizing on the controls.
+        # That is v_j' M_X v_j = ||v_j||^2 - h_j' (X'X) h_j: the part of the
+        # entity's exposure *orthogonal* to X, not the part aligned with it.
+        quad = infl.v_norm2 - np.einsum("pj,pj->j", H, infl.XtX @ H)
     else:
         raise ValueError(f"loss must be one of {LOSSES} or a contrast, got {loss!r}")
 

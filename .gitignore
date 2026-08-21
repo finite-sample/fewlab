@@ -209,12 +209,16 @@ marimo/_lsp/
 __marimo__/
 .DS_Store
 
-# LaTeX build products. The manuscript source is tracked; its output is not.
+# LaTeX build products. The manuscript source is tracked and so are the
+# generated exhibits under ms/generated, which the paper inputs; only the
+# compiled document and latexmk's scratch files are ignored.
 ms/*.aux
 ms/*.bbl
 ms/*.blg
 ms/*.fdb_latexmk
 ms/*.fls
 ms/*.out
-ms/*.pdf
+ms/few.pdf
 ms/*.synctex.gz
+
+ms/*.xdv
