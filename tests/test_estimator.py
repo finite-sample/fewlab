@@ -347,14 +347,69 @@ def test_the_poisson_variance_is_conservative_for_a_cube_draw(population) -> Non
 def test_the_balanced_variance_recovers_what_conservatism_costs(population) -> None:
     """The reason to have it: a cube interval should not be twice as wide as it needs.
 
-    Accounting for the fixed size and the balancing auxiliaries should bring the
-    estimate near the truth. It lands slightly low, which the docstring says,
-    so the gate allows understatement but not by much.
+    The gate is deliberately tight. A scalar degrees-of-freedom correction such
+    as `k/(k-q)` passes a loose band while understating the variance by about a
+    fifth, which is how the earlier implementation looked correct for longer
+    than it was. Only the leverage correction lands inside this one.
     """
     study, labels, _ = population
     ratios = _variance_ratios(study, labels, fixed_size=True, reps=VARIANCE_REPS // 2)
     assert ratios["balanced"] < ratios["hajek"] < ratios["poisson"], ratios
-    assert 0.7 < ratios["balanced"] < 1.2, ratios
+    assert 0.85 < ratios["balanced"] < 1.15, ratios
+
+
+def test_the_leverage_correction_beats_the_scalar_one_it_replaced(population) -> None:
+    """The falsification partner for the correction itself.
+
+    A shared factor such as `k/(k-q)` is the natural first implementation and it
+    is the right correction only when the residuals are homoskedastic. The
+    inclusion probabilities here span orders of magnitude, so leverage does too.
+    The two agree when few entities sit at certainty and diverge as the core
+    grows, which is why this runs at a budget large enough to build one, and
+    compares them on identical draws rather than against fixed thresholds.
+    """
+    study, labels, _ = population
+    budget = 80
+    design = study.design(budget)
+    rng = np.random.default_rng(31)
+    items = list(study.influence.items)
+    q = study.influence.n_features + 1
+    values, scalar, leverage = [], [], []
+    for _ in range(400):
+        sample = study.draw(design, random_state=rng, fixed_size=True)
+        if len(sample) == 0:
+            continue
+        pos = np.array([items.index(i) for i in sample.items])
+        pi = sample.probabilities.reindex(sample.items).to_numpy()
+        obs = labels.loc[sample.items].to_numpy()
+        contrib = (
+            np.einsum("pk,kq->kqp", study.influence.H[:, pos], obs).reshape(len(pi), -1)
+            / pi[:, None]
+        )
+        values.append(contrib.sum(axis=0))
+
+        k = len(pi)
+        mat = np.c_[np.ones(k), (study.influence.G[:, pos] / pi).T]
+        base = 1.0 - pi
+        root = np.sqrt(base)[:, None]
+        whitened = mat * root
+        pinv = np.linalg.pinv(whitened.T @ whitened)
+        resid = contrib - mat @ (pinv @ (whitened.T @ (contrib * root)))
+        lev = np.clip(np.einsum("ki,ij,kj->k", whitened, pinv, whitened), 0.0, 1 - 1e-9)
+        scalar.append(np.diag((resid * (base * k / max(k - q, 1))[:, None]).T @ resid))
+        leverage.append(np.diag((resid * (base / (1 - lev))[:, None]).T @ resid))
+
+    truth = np.array(values).var(axis=0)
+    r_scalar = float(np.median(np.array(scalar).mean(axis=0) / truth))
+    r_leverage = float(np.median(np.array(leverage).mean(axis=0) / truth))
+    assert abs(r_leverage - 1) < abs(r_scalar - 1), (
+        f"the leverage correction is no better than the scalar one it replaced: "
+        f"{r_leverage:.3f} against {r_scalar:.3f}"
+    )
+    assert r_scalar < 0.9, (
+        f"the scalar correction is no longer visibly biased ({r_scalar:.3f}), so "
+        f"this test no longer measures the difference it was written for"
+    )
 
 
 def test_the_fixed_size_estimators_understate_a_poisson_draw(population) -> None:

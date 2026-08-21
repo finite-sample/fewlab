@@ -189,6 +189,14 @@ def _design_covariance(
     part of a contribution the auxiliaries explain cannot vary either, and what
     remains is the residual from regressing on them.
 
+    Both corrections are the same construction with different degrees of freedom
+    removed, and each squared residual is inflated by its own leverage rather
+    than by a shared scalar. A scalar factor such as `k/(k-q)` is the right
+    correction only when the residuals are homoskedastic; the inclusion
+    probabilities here span orders of magnitude, so leverage does too, and on a
+    realistic design the scalar version understates the variance by about a
+    fifth while the leverage version is accurate to within Monte Carlo error.
+
     Args:
         contributions: `(K, pq)` rows holding `vec(h_j d_j') / pi_j`.
         pi_s: Delivered probabilities for the sampled entities.
@@ -205,29 +213,47 @@ def _design_covariance(
     """
     k, d = contributions.shape
     if variance == "poisson":
-        weights = 1.0 - pi_s
-        centred = contributions
-    elif variance in ("hajek", "balanced"):
-        if k < 2:
-            return np.zeros((d, d))
-        weights = (1.0 - pi_s) * k / (k - 1)
-        total = float(weights.sum())
-        if total <= 0:
-            return np.zeros((d, d))
-        if variance == "hajek":
-            centred = contributions - (weights @ contributions) / total
-        else:
-            if auxiliaries is None:
-                raise ValueError(
-                    'variance="balanced" needs the balancing auxiliaries the '
-                    "sampler used; draw the sample with fixed_size=True"
-                )
-            design = np.c_[np.ones(k), auxiliaries]
-            root = np.sqrt(weights)[:, None]
-            coef = np.linalg.lstsq(design * root, contributions * root, rcond=None)[0]
-            centred = contributions - design @ coef
-    else:
+        return (contributions * (1.0 - pi_s)[:, None]).T @ contributions
+    if variance not in ("hajek", "balanced"):
         raise ValueError(f"variance must be one of {VARIANCES}, got {variance!r}")
+    if k < 2:
+        return np.zeros((d, d))
+
+    # Both estimators are the same construction with a different set of things
+    # held fixed: Hajek fixes only the sample size, so it regresses on a
+    # constant; the balanced form also fixes the auxiliary totals, so it
+    # regresses on those too. What is left over after removing what the design
+    # could not have varied is what the variance is made of.
+    if variance == "hajek":
+        design = np.ones((k, 1))
+    else:
+        if auxiliaries is None:
+            raise ValueError(
+                'variance="balanced" needs the balancing auxiliaries the '
+                "sampler used; draw the sample with fixed_size=True"
+            )
+        design = np.c_[np.ones(k), auxiliaries]
+
+    base = 1.0 - pi_s
+    if base.sum() <= 0:
+        return np.zeros((d, d))
+    root = np.sqrt(base)[:, None]
+    whitened = design * root
+    pinv = np.linalg.pinv(whitened.T @ whitened)
+    coef = pinv @ (whitened.T @ (contributions * root))
+    residual = contributions - design @ coef
+
+    # Fitting the regression consumes degrees of freedom, and a single scalar
+    # correction such as k/(k-q) only accounts for that when the residuals are
+    # homoskedastic. Here the weights span orders of magnitude, so leverage does
+    # too, and each residual has to be inflated by its own. Certainty entities
+    # carry weight zero and no leverage, which is correct: they could not have
+    # been anywhere else.
+    leverage = np.clip(
+        np.einsum("ki,ij,kj->k", whitened, pinv, whitened), 0.0, 1 - 1e-9
+    )
+    weights = base / (1.0 - leverage)
+    centred = residual
     return (centred * weights[:, None]).T @ centred
 
 
