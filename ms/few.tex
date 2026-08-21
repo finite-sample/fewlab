@@ -2,32 +2,37 @@
 
 \RequirePackage{fontspec}
 
-% Load Latin Modern by FILENAME, not by name. XeTeX resolves font names through
-% fontconfig and filenames through kpathsea; TinyTeX installs its OTFs into the
-% TEXMF tree without registering them with fontconfig, so `\setmainfont{Latin
-% Modern Roman}` fails on a machine where the file is sitting right there. The
-% filename form works under either installation.
-\setmainfont{lmroman10-regular.otf}[
-  BoldFont       = lmroman10-bold.otf,
-  ItalicFont     = lmroman10-italic.otf,
-  BoldItalicFont = lmroman10-bolditalic.otf,
-  SmallCapsFont  = lmromancaps10-regular.otf,
-]
-% Swap in a licensed display face here when one is available, e.g.
-% \setsansfont{SF Pro}[Path = ./store/, UprightFont = SF-Pro.ttf, ...]
-\setsansfont{lmsans10-regular.otf}[
-  BoldFont   = lmsans10-bold.otf,
-  ItalicFont = lmsans10-oblique.otf,
-]
-
 \usepackage{xcolor}
 
 % Apple's text gray (from the cls)
 \definecolor{fgcolor}{HTML}{333333}
 \color{fgcolor}
 \usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb,mathtools,amsthm}
-\usepackage{bm}
+\usepackage{amsmath,mathtools,amsthm}
+\usepackage{unicode-math}
+
+% TeX Gyre Pagella, a Palatino, with its matching math font. Loaded by filename
+% because XeTeX resolves filenames through kpathsea and font names through
+% fontconfig, and a TinyTeX install registers neither its serif nor its math
+% faces with the latter. Loading by filename also means fontspec cannot guess
+% the companion weights, so each is named.
+\setmainfont{texgyrepagella-regular.otf}[
+  BoldFont       = texgyrepagella-bold.otf,
+  ItalicFont     = texgyrepagella-italic.otf,
+  BoldItalicFont = texgyrepagella-bolditalic.otf,
+]
+\setsansfont{texgyreheros-regular.otf}[
+  BoldFont   = texgyreheros-bold.otf,
+  ItalicFont = texgyreheros-italic.otf,
+  Scale      = MatchLowercase,
+]
+\setmonofont{texgyrecursor-regular.otf}[
+  BoldFont = texgyrecursor-bold.otf,
+  Scale    = MatchLowercase,
+]
+\setmathfont{texgyrepagella-math.otf}
+% For a tighter page, swap the three faces above for LibertinusSerif-Regular.otf,
+% LibertinusSans-Regular.otf and LibertinusMath-Regular.otf.
 \usepackage{booktabs}
 \usepackage{microtype}
 \usepackage{enumitem}
@@ -110,12 +115,12 @@ Under independent item sampling,
 \]
 We adopt the \emph{whitened A–optimal} criterion~\citep{Kiefer1959}
 \[
-\widetilde\Delta(\bm\pi)\;:=\;(X^\top X)^{-1/2}X^\top \Var(u)\,X\, (X^\top X)^{-1/2},
+\widetilde\Delta(\symbf{\pi})\;:=\;(X^\top X)^{-1/2}X^\top \Var(u)\,X\, (X^\top X)^{-1/2},
 \]
 whose trace bounds as
 \begin{equation}
 \label{eq:priorfree}
-\tr\,\widetilde\Delta(\bm\pi)\ \le\ \sum_{j=1}^m \frac{1-\pi_j}{\pi_j}\, w_j
+\tr\,\widetilde\Delta(\symbf{\pi})\ \le\ \sum_{j=1}^m \frac{1-\pi_j}{\pi_j}\, w_j
 =\sum_{j=1}^m \Big(\frac{1}{\pi_j}-1\Big) w_j.
 \end{equation}
 \emph{Interpretation.} Items with large $w_j$ are the ones whose noise projects strongly onto $X$; leaving them unlabeled inflates OLS variance. The fixed–budget optimum will therefore sample with $\pi_j\propto \sqrt{w_j}$.
@@ -128,13 +133,13 @@ whose trace bounds as
 
 \paragraph{Regression–SE control (target the $X$–aligned error).} Two equivalent formulations:
 \[
-\min_{\bm\pi}\ \sum_j \frac{w_j}{\pi_j}\quad\text{s.t.}\quad \sum_j \pi_j=K,\ \ \pi_{\min}\le\pi_j\le 1,
+\min_{\symbf{\pi}}\ \sum_j \frac{w_j}{\pi_j}\quad\text{s.t.}\quad \sum_j \pi_j=K,\ \ \pi_{\min}\le\pi_j\le 1,
 \qquad\Rightarrow\qquad
 \pi_j\ \propto\ \sqrt{w_j}\ \text{ (clamp to $[\pi_{\min},1]$)},
 \]
 or
 \[
-\min_{\bm\pi}\ \sum_j \pi_j\quad\text{s.t.}\quad \sum_j \frac{w_j}{\pi_j}\ \le\ \rho^2+\sum_j w_j,\ \ \pi_{\min}\le\pi_j\le 1.
+\min_{\symbf{\pi}}\ \sum_j \pi_j\quad\text{s.t.}\quad \sum_j \frac{w_j}{\pi_j}\ \le\ \rho^2+\sum_j w_j,\ \ \pi_{\min}\le\pi_j\le 1.
 \]
 Both are convex; both admit heterogeneous label costs by minimizing $\sum_j c_j\pi_j$, which tilts the KKT solution to $\pi_j\propto \sqrt{w_j/c_j}$. The inclusion floor $\pi_{\min}>0$ ensures HT is well–defined for any item that can affect the estimators (i.e., whenever some $q_{ij}>0$ below).
 
@@ -214,9 +219,9 @@ is design--unbiased for $\beta^*$ conditional on the classifier, whatever the cl
 \section{Inference and variance estimation}
 \label{sec:inference}
 
-Under independent item sampling, $\widetilde\Delta(\bm\pi)$ provides a conservative covariance bound for whitened coefficients; for without–replacement fixed–size designs, Sen–Yates–Grundy variance formulas with joint inclusions $(\pi_{jk})$ yield tighter design–based variance estimators for HT totals and, by the delta method, for $\widehat\beta$~\citep{Sen1953,YatesGrundy1953}. In practice:
+Under independent item sampling, $\widetilde\Delta(\symbf{\pi})$ provides a conservative covariance bound for whitened coefficients; for without–replacement fixed–size designs, Sen–Yates–Grundy variance formulas with joint inclusions $(\pi_{jk})$ yield tighter design–based variance estimators for HT totals and, by the delta method, for $\widehat\beta$~\citep{Sen1953,YatesGrundy1953}. In practice:
 \begin{itemize}[leftmargin=*, itemsep=2pt]
-\item Report design–based SEs using $\widetilde\Delta(\bm\pi)$ or a SYG estimator adapted to the actual design.
+\item Report design–based SEs using $\widetilde\Delta(\symbf{\pi})$ or a SYG estimator adapted to the actual design.
 \item As a conservative check, use item–cluster robust SEs for OLS on $\widehat y$ (errors are shared across rows via items).
 \item Efficiency upgrade: generalized least squares (GLS) with an estimated $\Sigma\approx \Var(u)$, i.e.,
 \[
