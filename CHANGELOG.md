@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-08-20
+
+The estimand has an exact finite-population identity that the package was
+approximating instead of using. Writing `V` for row shares and `A` for entity
+labels, the complete-label regression coefficient is
+
+    B = (X'X)^-1 X' V A = sum_j h_j a_j'
+
+with no error term, so an entity's entire contribution to the answer is known
+before any label is bought. Rebuilding on that identity fixed four defects and
+changed the public API throughout; there are no compatibility shims.
+
+Anyone who took a deterministic selection from `items_to_label` or
+`Design.select`, passed it to `calibrate_weights` and `estimate`, and reported
+the result as a Horvitz-Thompson estimate should treat that estimate as biased by
+an amount that cannot be recovered from the data they have, and re-draw.
+
+### Fixed
+
+- **Deterministic selection could be weighted as though it were a sample.**
+  `Design.calibrate_weights` computed inclusion probabilities from the *size* of
+  whatever set it was handed, regardless of how that set was chosen, so a top-K
+  ranking flowed into a function named `calibrated_ht_estimator`. Deterministic
+  selection has probability one above the cut and zero below it, and its bias is
+  the contribution of everything omitted, which depends on labels nobody bought.
+  `Ranking`, `LabelDesign` and `LabelSample` are now separate types, and only a
+  realized sample reaches an estimator.
+
+- **The influence score targeted a different loss than the documentation
+  claimed.** The code computed `g_j'(X'X)^-1 g_j`, which is the fitted-value
+  score, while `mathematical_background.rst` asserted coefficient-variance
+  optimality. That page contradicted itself, deriving the coefficient score at
+  line 39 and writing the prediction score at line 56. The loss is now declared
+  through `loss=`, and on an ill-conditioned `X'X` with spread influence
+  directions the two choices disagree on roughly a fifth of a budget.
+
+- **`row_se_min_labels` never minimized its objective.** Its dual step clipped
+  the gradient at zero, so a multiplier could never fall when its constraint went
+  slack; probabilities ratcheted upward and the search stopped at whatever design
+  first became feasible. The objective `sum_j pi_j` was never evaluated. The step
+  is now signed, and a scalar repair guarantees feasibility, which always exists
+  because `pi = 1` everywhere gives variance zero. Closes #21.
+
+- **`mixed_weights` was the truncated estimator under a misleading name.** It set
+  weight 1.0 for both core and tail while its docstring described `1/pi` for the
+  core, and its bias, called "tiny", is the entire omitted tail mass. On the
+  browsing panel that bias runs from 14 to 53 percent of the size of the
+  coefficient. It is replaced by explicit shrinkage that reports its own
+  worst-case bias bound.
+
+- **The published efficiency figures did not measure efficiency.** The 1.14x
+  headline was the mean of five per-coefficient ratios, one of 1.6972 and four
+  between 0.9994 and 1.0003. The evaluation drew a `beta_true` it never used to
+  generate anything, and its counts were `activity_i x popularity_j`, a rank-one
+  mean on which every entity's influence points the same way, so no method could
+  differ from any other. All prior efficiency claims are withdrawn.
+
+### Added
+
+- `Study`, the entry point, with `from_long` for panels that arrive as one row
+  per unit and entity. A browsing panel of 1,134 users by 34,078 domains is 0.27
+  percent dense: 309 MB as a matrix, a few MB as triples.
+- Standard errors, which did not previously exist, reported in two parts: the
+  design component a budget buys down and the regression component it cannot
+  touch. Their ratio is a stopping rule.
+- `poisson_pps`, the risk-minimizing design, and `core_plus_tail`, whose
+  certainty-core boundary now comes from a closed form rather than a
+  `tail_frac` parameter.
+- A proxy-assisted difference estimator that is exactly unbiased whatever the
+  proxy says, so a poor classifier costs variance and never bias.
+- `estimate_share_effect`, for the case where the purchased label builds a
+  covariate rather than an outcome. There an unbiased constructed variable
+  attenuates its own coefficient, and the design's knowledge of its own error
+  variance supplies the correction.
+- `direction_spectrum`, which reports when a population cannot distinguish one
+  design criterion from another. It is the diagnostic that would have caught the
+  broken evaluation.
+- A benchmark against a browsing panel whose labels are all known, shipped
+  hashed so the numbers can be rechecked rather than believed.
+
+### Removed
+
+- `greedy_aopt_selection`, which started from `1e8 * I` rather than `X'X` and so
+  optimized a sensor-design objective unrelated to the batch criterion it shared
+  a name with, while supplying no inclusion probabilities.
+- `adaptive_core_tail`, whose tail fraction averaged two ad-hoc scores and is
+  obsoleted by the closed-form core size.
+- `mixed_weights`, `items_to_label`, `pi_aopt_for_budget`, `Design`, and the
+  `core`, `selection`, `balanced`, `hybrid`, `greedy` and `results` modules.
+
+
 ## [2.0.0] - 2026-08-07
 
 The sampler did not deliver the inclusion probabilities it reported, so every
