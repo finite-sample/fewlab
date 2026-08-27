@@ -130,6 +130,21 @@ exclude = '\.venv|tests|docs'
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+minversion = "6"
+log_level = "INFO"
+xfail_strict = true
+filterwarnings = [
+    "error",
+    # fewlab's own advisories, fired by fixtures that are correct as written: a
+    # design matrix with an intercept has a constant column by construction,
+    # and the zero-row and infeasible-budget tests exercise exactly the paths
+    # that warn. Scoped to the message so an unexpected warning still fails.
+    "ignore:.*has constant columns.*:UserWarning",
+    "ignore:.*with all zeros.*:UserWarning",
+    "ignore:.*infeasible probabilities.*:UserWarning",
+    "ignore:.*Calibration could not be satisfied.*:UserWarning",
+]
+addopts = ["--strict-config", "--strict-markers", "-ra"]
 
 [tool.coverage.run]
 source = ["fewlab"]
