@@ -21,7 +21,17 @@ fewlab: fewest items to label for most efficient unbiased OLS
    :target: https://www.python.org/downloads/
    :alt: Python versions
 
-**Problem**: You have usage data (users × items) and want to understand how user traits relate to item preferences. But you can't afford to label every item. This tool tells you which items to label first to get the most accurate analysis.
+**Buy the labels that buy the smallest standard error.**
+
+You have a usage matrix: rows are people, columns are things they used. Websites,
+merchants, products, surnames. You want to regress something about the column on
+features of the row, but finding out what the column *is* costs money, and you
+cannot afford all of them.
+
+On a real browsing panel, labeling 250 of 34,078 domains recovers the same
+regression coefficients as labeling all of them, with a ninth of the error that
+spending the same 250 labels at random would give. The estimate stays exactly
+unbiased and reports a standard error you can put in a table.
 
 .. toctree::
    :maxdepth: 2
@@ -33,56 +43,23 @@ fewlab: fewest items to label for most efficient unbiased OLS
    mathematical_background
    EVALUATION_RESULTS
 
-Overview
---------
+Why it works
+------------
 
-When You Need This
-^^^^^^^^^^^^^^^^^^
+Write :math:`V` for row shares and :math:`A` for entity labels. The
+complete-label regression coefficient is
 
-You have:
+.. math::
+   \beta^* = (X^\top X)^{-1} X^\top V A = \sum_j h_j a_j^\top
 
-- A usage matrix: rows are users, columns are items (websites, products, apps)
-- User features you want to analyze (demographics, behavior patterns)
-- Limited budget to label items (safe/unsafe, brand affiliation, category)
+exactly, with no error term. Entity :math:`j`'s entire contribution is
+:math:`h_j a_j^\top`, and :math:`h_j` is computable from usage counts and
+features before a single label is bought. Everything else follows: the optimal
+inclusion probabilities, the certainty core, and the standard errors.
 
-You want to run a regression to understand relationships between user features and item traits, but labeling is expensive. Random sampling wastes budget on items that don't affect your analysis.
-
-How It Works
-^^^^^^^^^^^^
-
-The tool identifies items that most influence your regression coefficients. It prioritizes items that:
-
-1. Are used by many people
-2. Show different usage patterns across your user segments
-3. Would most change your conclusions if mislabeled
-
-Think of it as "statistical leverage"—some items matter more for understanding user-trait relationships.
-
-Quick Example
-^^^^^^^^^^^^^
-
-.. code-block:: python
-
-   from fewlab import items_to_label
-   import pandas as pd
-
-   # Your data: user features and item usage
-   user_features = pd.DataFrame(...)  # User characteristics
-   item_usage = pd.DataFrame(...)     # Usage counts per user-item
-
-   # Get top 100 items to label
-   priority_items = items_to_label(
-       counts=item_usage,
-       X=user_features,
-       K=100
-   )
-
-   # Send priority_items to your labeling team
-   print(f"Label these items first: {priority_items}")
-
-For a complete demonstration with performance analysis, run the `interactive
-Jupyter notebook <https://colab.research.google.com/github/finite-sample/fewlab/blob/main/docs/fewlab_demo_colab.ipynb>`_,
-which shows a ~33% reduction in standard errors compared to random selection.
+Two goals, and neither is traded for the other. Unbiasedness is a constraint:
+every contributing entity gets positive probability and reciprocal weight.
+Minimum standard error is what you optimize subject to it.
 
 Installation
 ------------
@@ -91,16 +68,16 @@ Installation
 
    pip install fewlab
 
-Requires: numpy, pandas
+Requires Python 3.12 or later, numpy and pandas.
+
+Evidence
+--------
+
+The numbers above come from :doc:`EVALUATION_RESULTS`, which scores every design
+against a population whose labels are all known, so there is a fixed truth to be
+measured against. Reproduce it with ``python benchmarks/make_exhibits.py``.
 
 License
 -------
 
 MIT
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`

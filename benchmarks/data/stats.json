@@ -1,0 +1,12 @@
+{
+  "panel_users": 1134,
+  "panel_domains": 64074,
+  "panel_visits": 6236834,
+  "labeled_domains": 34078,
+  "label_coverage_domains": 0.5319,
+  "labeled_visit_share": 0.7643,
+  "eval_users": 1132,
+  "eval_domains": 34078,
+  "eval_rows": 103853,
+  "density": 0.002692
+}

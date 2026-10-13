@@ -52,7 +52,7 @@ DUAL_START_VALUE: float = (
     1e-4  # Initial value for dual variables in optimization algorithms.
 )
 
-NOISE_SCALE: float = (
+NOISE_SCALE_UNUSED: float = (
     1e-6  # Scale of random noise added to prevent cycling in iterative algorithms.
 )
 
@@ -69,3 +69,7 @@ BINARY_SEARCH_HI: float = (
 NORMALIZATION_EPS: float = (
     1e-9  # Small value added to standard deviation for data normalization.
 )
+
+# How many non-improving dual steps to allow after the first feasible design
+# before concluding the objective has converged.
+STALL_PATIENCE = 200

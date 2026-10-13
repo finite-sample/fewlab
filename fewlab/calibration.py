@@ -153,39 +153,3 @@ def calibrate_weights(
     index = selected if isinstance(selected, pd.Index) else pd.Index(list(selected))
     result_series: pd.Series = pd.Series(w, index=index, name="calibrated_weights")
     return result_series
-
-
-def calibrated_ht_estimator(
-    counts: pd.DataFrame,
-    labels: pd.Series,
-    weights: pd.Series,
-    *,
-    normalize_by_total: bool = True,
-) -> pd.Series:
-    """Compute calibrated Horvitz-Thompson estimator for row shares.
-
-    Args:
-        counts: Count matrix with rows as units and columns as items.
-        labels: Item labels for the selected items.
-        weights: Calibrated weights for the selected items.
-        normalize_by_total: Whether to divide by row totals to obtain shares.
-
-    Returns:
-        Estimated row shares (or totals if `normalize_by_total` is False).
-    """
-    # Align weights and labels with counts columns
-    w = weights.reindex(counts.columns).fillna(0.0).to_numpy(dtype=float)
-    a = labels.reindex(counts.columns).fillna(0.0).to_numpy(dtype=float)
-
-    # Weighted sum
-    numerator = counts.to_numpy(dtype=float) @ (w * a)  # (n,)
-
-    if normalize_by_total:
-        T = counts.sum(axis=1).to_numpy(float)
-        result = numerator / (T + DIVISION_EPS)
-    else:
-        result = numerator
-
-    return pd.Series(
-        result, index=counts.index, name="calibrated_ht_estimate", dtype=float
-    )
