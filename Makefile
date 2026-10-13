@@ -1,52 +1,49 @@
-.PHONY: help clean install test test-cov lint format type-check docs docs-serve build upload dev-install
+.PHONY: help clean install dev-install test test-cov lint format type-check docs docs-serve doctest build ci
 
 help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 clean: ## Clean build artifacts
-	rm -rf build/
-	rm -rf dist/
-	rm -rf *.egg-info/
-	rm -rf .pytest_cache/
-	rm -rf .coverage
-	rm -rf htmlcov/
-	rm -rf docs/build/
-	find . -type d -name __pycache__ -delete
-	find . -type f -name "*.pyc" -delete
+	rm -rf build/ dist/ *.egg-info/ .pytest_cache/ .ruff_cache/ .coverage htmlcov/
+	rm -rf docs/_build/ _site/ _doctest/
+	find . -type d -name __pycache__ -prune -exec rm -rf {} +
 
-install: ## Install package
-	uv pip install -e .
+install: ## Install the package into the project environment
+	uv sync
 
-dev-install: ## Install package with development dependencies
-	uv sync --dev
-	pre-commit install
+dev-install: ## Install every dependency group and the pre-commit hooks
+	uv sync --all-groups
+	uv run pre-commit install
 
-test: ## Run tests
-	pytest
+test: ## Run the test suite
+	uv run pytest
 
-test-cov: ## Run tests with coverage
-	pytest --cov=fewlab --cov-report=html --cov-report=term
+test-cov: ## Run the test suite with a coverage report
+	uv run pytest --cov --cov-report=term-missing
 
-lint: ## Run linter
-	ruff check .
+lint: ## Lint and check formatting the way CI does
+	uv run ruff check .
+	uv run ruff format --check .
 
-format: ## Format code
-	ruff format .
-	ruff check --fix .
+format: ## Apply formatting and safe lint fixes
+	uv run ruff format .
+	uv run ruff check --fix .
 
-type-check: ## Run type checker
-	mypy fewlab/
+type-check: ## Run the type checker
+	uv run pyright
 
-docs: ## Build documentation
-	cd docs && make clean && make html
+docs: ## Build the documentation with warnings treated as errors
+	uv run sphinx-build -W -b html docs _site
 
-docs-serve: ## Serve documentation locally
-	cd docs/build/html && python -m http.server 8000
+doctest: ## Run the examples embedded in docstrings and docs pages
+	uv run sphinx-build -b doctest docs _doctest
 
-build: ## Build package
+docs-serve: docs ## Build and serve the documentation locally
+	cd _site && python -m http.server 8000
+
+build: ## Build the sdist and wheel
 	uv build
 
-upload: ## Upload to PyPI
-	uv publish
-
-ci: lint type-check test ## Run CI checks
+ci: lint type-check test docs doctest ## Run the checks CI runs
+	uv run pydoclint fewlab
+	uvx preen check --strict --skip tests

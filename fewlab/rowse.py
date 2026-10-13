@@ -1,4 +1,12 @@
+"""Inclusion probabilities under row-wise standard-error constraints.
+
+Instead of fixing a budget and minimising variance, this module fixes a
+per-row variance ceiling and minimises the expected number of labels.
+"""
+
 import warnings
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -7,16 +15,45 @@ from .constants import (
     DIVISION_EPS,
     DUAL_START_VALUE,
     MAX_ITER_ROWSE,
-    NOISE_SCALE,
     PI_MIN_DEFAULT,
+    STALL_PATIENCE,
     TOLERANCE_DEFAULT,
 )
-from .results import RowSEResult
-from .utils import _get_random_generator
 from .validation import (
     ValidationError,
     validate_counts_matrix,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class RowSEResult:
+    """Probabilities and convergence detail from the row-SE optimizer.
+
+    Attributes:
+        probabilities: Inclusion probabilities, indexed by entity.
+        expected_labels: The objective, `sum_j pi_j`.
+        max_violation: Largest remaining constraint violation.
+        tolerance: Feasibility tolerance used.
+        iterations: Dual steps taken.
+        best_iteration: Step at which the returned design was found.
+        feasible: Whether every row-SE ceiling is met.
+    """
+
+    probabilities: pd.Series
+    expected_labels: float
+    max_violation: float
+    tolerance: float
+    iterations: int
+    best_iteration: int
+    feasible: bool
+
+    def to_series(self) -> pd.Series:
+        """Return just the probabilities.
+
+        Returns:
+            The inclusion probabilities.
+        """
+        return self.probabilities
 
 
 def row_se_min_labels(
@@ -26,12 +63,10 @@ def row_se_min_labels(
     pi_min: float = PI_MIN_DEFAULT,
     max_iter: int = MAX_ITER_ROWSE,
     tol: float = TOLERANCE_DEFAULT,
-    random_state: None | int | np.random.Generator = None,
     return_result: bool = False,
     raise_on_failure: bool = False,
 ) -> RowSEResult | pd.Series:
-    """
-    Compute inclusion probabilities that minimize total expected labels under row-wise SE limits.
+    """Minimize expected labels subject to row-wise SE limits.
 
     The routine solves:
 
@@ -46,16 +81,17 @@ def row_se_min_labels(
         pi_min: Minimum allowable inclusion probability.
         max_iter: Maximum optimization iterations.
         tol: Convergence tolerance for constraint violations.
-        random_state: Random state for the stochastic subgradient steps. Can be None, int, or Generator.
         return_result: If True, return a `RowSEResult` with diagnostics.
-        raise_on_failure: If True, raise a `ValidationError` when constraints remain violated.
+        raise_on_failure: If True, raise a `ValidationError` when constraints
+            remain violated.
 
     Returns:
         Probability series if `return_result` is False (default) or a `RowSEResult` with
         diagnostics when `return_result` is True.
 
     Raises:
-        ValidationError: If inputs are invalid or `raise_on_failure` is True and the constraints
+        ValidationError: If inputs are invalid or `raise_on_failure` is True and
+            the constraints
             remain violated after optimization.
 
     See Also:
@@ -63,13 +99,14 @@ def row_se_min_labels(
         items_to_label: Deterministic selection without SE constraints.
 
     Examples:
-        >>> import pandas as pd
         >>> import numpy as np
+        >>> import pandas as pd
         >>> from fewlab import row_se_min_labels
-        >>>
-        >>> counts = pd.DataFrame(np.random.poisson(10, (500, 50)))
-        >>> pi = row_se_min_labels(counts, eps2=0.05**2)
-        >>> float(pi.sum())
+        >>> rng = np.random.default_rng(0)
+        >>> counts = pd.DataFrame(rng.poisson(10, (200, 20)))
+        >>> pi = row_se_min_labels(counts, eps2=0.3**2)
+        >>> bool(0 < pi.sum() <= counts.shape[1])
+        True
     """
     # Validate inputs
     counts = validate_counts_matrix(counts)
@@ -108,44 +145,78 @@ def row_se_min_labels(
     mu: np.ndarray = np.full(n, DUAL_START_VALUE)  # dual start
 
     def primal_from_mu(mu_vec: np.ndarray) -> np.ndarray:
+        # Minimizing pi_j + (sum_i mu_i q_ij)/pi_j over pi_j gives the exact
+        # stationary point sqrt(sum_i mu_i q_ij).
         s: np.ndarray = q.T @ mu_vec  # (m,)
         pi: np.ndarray = np.sqrt(s + DIVISION_EPS)
         return np.clip(pi, pi_min, 1.0)
-
-    pi: np.ndarray = primal_from_mu(mu)
 
     def lhs(pi_vec: np.ndarray) -> np.ndarray:
         result: np.ndarray = (q / (pi_vec[None, :] + DIVISION_EPS)).sum(axis=1)
         return result
 
+    pi: np.ndarray = primal_from_mu(mu)
     L = lhs(pi)
     viol = L - b
-    best_pi, best_max_viol = pi.copy(), float(np.max(viol))
 
-    rng = _get_random_generator(random_state)
+    # The objective is sum_j pi_j, so track the cheapest *feasible* iterate.
+    # Tracking the smallest constraint violation instead -- as this did -- stops
+    # at whatever design first became feasible, which is a feasibility check
+    # rather than a minimization.
+    best_pi = pi.copy()
+    best_obj = float("inf")
+    best_max_viol = float(np.max(viol))
+    fallback_pi = pi.copy()
+
     best_iteration = 0
     iterations_run = 0
+    stale = 0
     for iteration in range(1, max_iter + 1):
         iterations_run = iteration
-        if best_max_viol <= tol:
-            break
-        # subgradient step on mu: mu <- [mu + eta*(L - b)]_+
-        g = np.maximum(viol, 0.0)
-        gnorm = float(np.linalg.norm(g))
+        # Dual ascent on mu with the *signed* violation. Clipping the gradient
+        # at zero -- as this did -- means a multiplier can never fall when its
+        # constraint goes slack, so probabilities ratchet upward and the search
+        # halts at first feasibility instead of minimizing the objective.
+        # Projection onto mu >= 0 is the np.maximum below, not the gradient.
+        gnorm = float(np.linalg.norm(viol))
         eta = 0.5 / (1.0 + gnorm)
-        # small random jitter helps avoid cycling
-        mu = np.maximum(0.0, mu + eta * g + rng.normal(scale=NOISE_SCALE, size=n))
+        mu = np.maximum(0.0, mu + eta * viol)
         pi = primal_from_mu(mu)
         L = lhs(pi)
         viol = L - b
         mv = float(np.max(viol))
+        obj = float(pi.sum())
+
         if mv < best_max_viol:
             best_max_viol = mv
+            fallback_pi = pi.copy()
+        if mv <= tol and obj < best_obj - tol:
+            best_obj = obj
             best_pi = pi.copy()
             best_iteration = iteration
+            stale = 0
+        elif best_obj < float("inf"):
+            stale += 1
+            if stale >= STALL_PATIENCE:
+                break
+
+    if best_obj == float("inf"):
+        best_pi = fallback_pi
+
+    # Dual ascent converges at O(1/sqrt(k)), which is fine for finding the shape
+    # of the solution and hopeless for driving the last 1e-4 of violation to
+    # 1e-6. Repair it directly instead: scaling every probability up by a common
+    # factor is monotone in every constraint, so a bisection on that factor
+    # finds the smallest feasible rescaling. It always succeeds, because pi = 1
+    # everywhere gives variance zero and satisfies every ceiling by construction
+    # -- the row-SE problem cannot be infeasible.
+    best_pi, scale = _repair(best_pi, lhs, b, tol, pi_min)
+    best_max_viol = float(np.max(lhs(best_pi) - b))
 
     feasible = best_max_viol <= tol
     diagnostics = {
+        "expected_labels": float(best_pi.sum()),
+        "repair_scale": scale,
         "max_violation": max(0.0, best_max_viol),
         "tolerance": tol,
         "iterations": iterations_run,
@@ -168,6 +239,7 @@ def row_se_min_labels(
 
     result = RowSEResult(
         probabilities=pi_series,
+        expected_labels=float(best_pi.sum()),
         max_violation=diagnostics["max_violation"],
         tolerance=tol,
         iterations=iterations_run,
@@ -176,3 +248,41 @@ def row_se_min_labels(
     )
 
     return result if return_result else pi_series
+
+
+def _repair(
+    pi: np.ndarray,
+    lhs: Callable[[np.ndarray], np.ndarray],
+    b: np.ndarray,
+    tol: float,
+    pi_min: float,
+) -> tuple[np.ndarray, float]:
+    """Rescale probabilities upward by the smallest factor that is feasible.
+
+    Every constraint left-hand side `sum_j q_ij / pi_j` is decreasing in a common
+    positive scaling of `pi`, so feasibility is monotone in the factor and a
+    bisection finds the smallest one. The upper end is always feasible, since
+    `pi = 1` everywhere makes the design-variance term vanish.
+
+    Args:
+        pi: Probabilities from the dual ascent.
+        lhs: Constraint left-hand side as a function of probabilities.
+        b: Constraint right-hand sides.
+        tol: Feasibility tolerance.
+        pi_min: Lower clip for probabilities.
+
+    Returns:
+        The repaired probabilities and the scaling factor applied.
+    """
+    if float(np.max(lhs(pi) - b)) <= tol:
+        return pi, 1.0
+    lo, hi = 1.0, max(2.0, float(1.0 / max(pi.min(), pi_min)))
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if float(np.max(lhs(np.clip(mid * pi, pi_min, 1.0)) - b)) <= tol:
+            hi = mid
+        else:
+            lo = mid
+        if hi - lo < 1e-12:
+            break
+    return np.clip(hi * pi, pi_min, 1.0), float(hi)

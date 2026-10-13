@@ -1,58 +1,79 @@
+"""fewlab: buy the labels that buy the smallest standard error.
+
+One label belongs to an entity -- a website, a merchant, a surname -- that
+recurs across many units, so what a label is worth depends on where the entity
+appears and on what you intend to estimate. That has an exact answer, not a
+heuristic one: writing `V` for row shares and `A` for entity labels, the
+complete-label regression coefficient is
+
+    B = (X'X)^-1 X' V A = sum_j h_j a_j'
+
+so entity `j`'s entire contribution is the rank-one matrix `h_j a_j'`, and `h_j`
+is computable before a single label is bought.
+
+Two goals, neither traded for the other. Unbiasedness is a constraint: every
+contributing entity gets positive probability and reciprocal weight. Minimum
+standard error is the objective under it.
 """
-Fewlab: Optimal item selection for efficient labeling and survey sampling.
 
-Main API functions:
-- items_to_label: Deterministic A-optimal selection
-- pi_aopt_for_budget: A-optimal inclusion probabilities
-- balanced_fixed_size: Balanced sampling with fixed size
-- scale_pi_to_budget: The inclusion probabilities that sampler delivers
-- row_se_min_labels: Row-wise SE minimization
-- calibrate_weights: GREG-style weight calibration
-- core_plus_tail: Hybrid deterministic core + balanced tail
-- adaptive_core_tail: Data-driven hybrid selection
-"""
+from importlib import metadata as _metadata
 
-from importlib.metadata import version
-
-from .balanced import balanced_fixed_size
-from .calibration import calibrate_weights, calibrated_ht_estimator
-from .core import items_to_label, pi_aopt_for_budget
-from .cube import scale_pi_to_budget
-from .design import Design
-from .greedy import greedy_aopt_selection
-from .hybrid import adaptive_core_tail, core_plus_tail
-from .results import (
-    CoreTailResult,
-    EstimationResult,
-    ProbabilityResult,
-    RowSEResult,
-    SamplingResult,
-    SelectionResult,
+from .covariate import ShareEffect, estimate_share_effect
+from .designs import (
+    LabelDesign,
+    core_plus_tail,
+    design_risk,
+    min_cost_for_risk,
+    poisson_pps,
+    robust_pps,
+    simple_random,
 )
-from .rowse import row_se_min_labels
-from .selection import topk
+from .estimator import Estimate, LabelSample, estimate, trim_alpha
+from .influence import (
+    Influence,
+    contribution_scores,
+    direction_spectrum,
+    influence,
+)
+from .rowse import RowSEResult, row_se_min_labels
+from .study import Ranking, Study
+from .superpopulation import (
+    SuperpopulationEstimate,
+    estimate_superpopulation,
+)
 
-__version__ = version("fewlab")
+# Single source of truth is pyproject.toml; reading it back avoids a second
+# copy that nothing keeps in sync.
+try:
+    _installed_version = _metadata.version("fewlab")
+except _metadata.PackageNotFoundError:  # pragma: no cover - source checkout
+    _installed_version = "0.0.0.dev0"
+
+__version__ = _installed_version
 
 __all__ = [
-    # Primary interface
-    "Design",
-    # Core methods
-    "items_to_label",
-    "pi_aopt_for_budget",
-    "balanced_fixed_size",
-    "scale_pi_to_budget",
-    "row_se_min_labels",
-    "topk",
-    "calibrate_weights",
-    "calibrated_ht_estimator",
-    "core_plus_tail",
-    "adaptive_core_tail",
-    "greedy_aopt_selection",
-    "CoreTailResult",
-    "SamplingResult",
-    "SelectionResult",
-    "ProbabilityResult",
-    "EstimationResult",
+    "Estimate",
+    "Influence",
+    "LabelDesign",
+    "LabelSample",
+    "Ranking",
     "RowSEResult",
+    "ShareEffect",
+    "Study",
+    "SuperpopulationEstimate",
+    "__version__",
+    "contribution_scores",
+    "core_plus_tail",
+    "design_risk",
+    "direction_spectrum",
+    "estimate",
+    "estimate_share_effect",
+    "estimate_superpopulation",
+    "influence",
+    "min_cost_for_risk",
+    "poisson_pps",
+    "robust_pps",
+    "row_se_min_labels",
+    "simple_random",
+    "trim_alpha",
 ]

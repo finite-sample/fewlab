@@ -78,7 +78,8 @@ def test_scaling_hits_the_budget_exactly():
         for budget in (1, n_items // 3, n_items - 1):
             scaled = scale_pi_to_budget(rng.random(n_items), budget)
             assert scaled.sum() == pytest.approx(budget, abs=1e-9)
-            assert (scaled >= 0.0).all() and (scaled <= 1.0).all()
+            assert (scaled >= 0.0).all()
+            assert (scaled <= 1.0).all()
 
 
 def test_scaling_pins_entries_that_would_exceed_one():
@@ -240,7 +241,8 @@ def test_certainty_items_are_never_missed():
     rng = np.random.default_rng(5)
     for _ in range(300):
         selected = cube_sample(PI, _fixed_size_only(PI.size), rng)
-        assert selected[0] and selected[1]
+        assert selected[0]
+        assert selected[1]
 
 
 # --------------------------------------------------------------------------

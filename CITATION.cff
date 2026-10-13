@@ -2,18 +2,20 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "fewlab: fewest items to label for most efficient unbiased OLS on shares"
-version: 0.1.0
-date-released: 2024-12-01
+version: 3.0.0
+date-released: "2026-10-13"
 url: "https://github.com/finite-sample/fewlab"
 repository-code: "https://github.com/finite-sample/fewlab"
 authors:
 - family-names: "Sood"
   given-names: "Gaurav"
-abstract: "A tool to identify which items to label first to get the most accurate analysis when running regression on user-item data with limited labeling budget."
+abstract: "Chooses which reusable entity labels to buy so that a downstream regression is as precise as possible without giving up unbiasedness. The complete-label coefficient decomposes exactly as a sum of per-entity contributions, which fixes each entity's value before any label is purchased and yields the risk-minimizing inclusion probabilities, a certainty core that falls out of the budget constraint, and design-based standard errors."
 keywords:
-  - "machine learning"
-  - "active learning"
+  - "survey sampling"
+  - "Horvitz-Thompson"
+  - "optimal design"
+  - "unequal probability sampling"
   - "regression analysis"
-  - "item selection"
-  - "statistical sampling"
+  - "active learning"
+  - "annotation"
 license: MIT

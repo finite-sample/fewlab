@@ -1,5 +1,4 @@
-"""
-Weight calibration methods for optimal survey sampling.
+"""Weight calibration methods for optimal survey sampling.
 
 This module implements GREG (Generalized Regression) calibration and related
 techniques for adjusting sampling weights to match known population totals.
@@ -66,8 +65,7 @@ def calibrate_weights(
     ridge: float = SMALL_RIDGE,
     nonneg: bool = True,
 ) -> pd.Series:
-    """
-    Compute calibrated weights for selected items using GREG/Deville-Särndal calibration.
+    """Compute calibrated weights via GREG/Deville-Särndal calibration.
 
     Args:
         pi: Inclusion probabilities for all items (index = item names).
@@ -87,10 +85,12 @@ def calibrate_weights(
 
     Notes:
         The closed-form solution for chi-square distance is
-        `w* = d_S + G_S^T (G_S G_S^T + ridge I)^{-1} (t - G_S d_S)` where `d_S` are base weights.
+        `w* = d_S + G_S^T (G_S G_S^T + ridge I)^{-1} (t - G_S d_S)`, where `d_S`
+        are the base weights.
 
     References:
-        Deville, J.-C., & Särndal, C.-E. (1992). Calibration estimators in survey sampling.
+        Deville, J.-C., & Särndal, C.-E. (1992). Calibration estimators in survey
+        sampling.
         Journal of the American Statistical Association, 87(418), 376-382.
     """
     if distance != "chi2":
@@ -150,46 +150,6 @@ def calibrate_weights(
             w = _solve_calibration(G_s, d, t, ridge, free)
         w = np.maximum(w, DIVISION_EPS)
 
-    if isinstance(selected, pd.Index):
-        index = selected
-    else:
-        index = pd.Index(list(selected))
+    index = selected if isinstance(selected, pd.Index) else pd.Index(list(selected))
     result_series: pd.Series = pd.Series(w, index=index, name="calibrated_weights")
     return result_series
-
-
-def calibrated_ht_estimator(
-    counts: pd.DataFrame,
-    labels: pd.Series,
-    weights: pd.Series,
-    *,
-    normalize_by_total: bool = True,
-) -> pd.Series:
-    """
-    Compute calibrated Horvitz-Thompson estimator for row shares.
-
-    Args:
-        counts: Count matrix with rows as units and columns as items.
-        labels: Item labels for the selected items.
-        weights: Calibrated weights for the selected items.
-        normalize_by_total: Whether to divide by row totals to obtain shares.
-
-    Returns:
-        Estimated row shares (or totals if `normalize_by_total` is False).
-    """
-    # Align weights and labels with counts columns
-    w = weights.reindex(counts.columns).fillna(0.0).to_numpy(dtype=float)
-    a = labels.reindex(counts.columns).fillna(0.0).to_numpy(dtype=float)
-
-    # Weighted sum
-    numerator = counts.to_numpy(dtype=float) @ (w * a)  # (n,)
-
-    if normalize_by_total:
-        T = counts.sum(axis=1).to_numpy(float)
-        result = numerator / (T + DIVISION_EPS)
-    else:
-        result = numerator
-
-    return pd.Series(
-        result, index=counts.index, name="calibrated_ht_estimate", dtype=float
-    )
