@@ -102,7 +102,8 @@ they exclude regression sampling uncertainty and do not bound realized errors.
    >>> limited = study.design_for_risk(0.01**2, contrast=contrast)
    >>> limited.risk <= 0.01**2 * (1 + 1e-12)
    True
-   >>> limited.diagnostics["expected_cost"] == limited.budget
+   >>> cost = limited.diagnostics["expected_cost"]
+   >>> abs(cost - limited.budget) <= 1e-12 * limited.budget  # unit costs: cost = labels
    True
    >>> draw = study.draw(limited, fixed_size=False, random_state=2)
    >>> observed = pd.Series(rng.integers(0, 2, len(draw)), index=draw.items)
