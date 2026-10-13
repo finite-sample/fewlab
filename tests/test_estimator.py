@@ -271,6 +271,9 @@ def test_both_variance_components_are_reported(population) -> None:
     assert 0.0 <= est.diagnostics["variance_ratio"] <= 1.0
 
 
+# At small budgets some draws legitimately trip the advisory that design noise
+# exceeds the residual variance; this test is about something else.
+@pytest.mark.filterwarnings("ignore:design noise accounts:UserWarning")
 def test_spending_more_shrinks_only_the_design_component(population) -> None:
     """The stopping rule depends on this being true; check it is."""
     study, labels, _ = population

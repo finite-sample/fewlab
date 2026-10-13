@@ -42,6 +42,9 @@ def test_calibrated_weights_reproduce_the_population_totals(setup) -> None:
     np.testing.assert_allclose(achieved, study.influence.G.sum(axis=1), rtol=1e-6)
 
 
+# At small budgets some draws legitimately trip the advisory that design noise
+# exceeds the residual variance; this test is about something else.
+@pytest.mark.filterwarnings("ignore:design noise accounts:UserWarning")
 def test_calibration_reduces_error_on_a_poisson_draw(setup) -> None:
     """The reason to use it: an unbalanced sampler leaves error on the table."""
     study, labels, B = setup

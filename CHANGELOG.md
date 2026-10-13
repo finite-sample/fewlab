@@ -5,25 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-
-- `min_cost_for_risk` and `Study.design_for_risk` minimize expected label cost
-  subject to a Poisson risk ceiling, with optional entity costs and contrasts.
-  Designs report achieved risk, expected cost, and certainty-core size.
-
-### Fixed
-
-- PPS now checks whether any certainty core is needed before pinning an entity.
-  Ten equal scores with a budget of two now receive probability 0.2 each, reducing
-  risk from 72 to the optimum of 40.
-- Indexed costs are aligned to score entities and validated before optimization.
-- Documentation distinguishes exact one-hot risk from bounds for binary labels,
-  and removes the unsupported claim that Poisson variance always bounds the
-  variance of fixed-size or balanced sampling.
-
-## [3.0.0] - 2026-08-20
+## [3.0.0] - Unreleased
 
 The estimand has an exact finite-population identity that the package was
 approximating instead of using. Writing `V` for row shares and `A` for entity
@@ -90,7 +72,13 @@ an amount that cannot be recovered from the data they have, and re-draw.
   touch. Their ratio is a stopping rule.
 - `poisson_pps`, the risk-minimizing design, and `core_plus_tail`, whose
   certainty-core boundary now comes from a closed form rather than a
-  `tail_frac` parameter.
+  `tail_frac` parameter. An entity enters the certainty core only when the
+  budget requires it: ten equal scores at a budget of two get probability 0.2
+  each.
+- `min_cost_for_risk` and `Study.design_for_risk`, the inverse of the budget
+  problem: the cheapest design that meets a risk ceiling, with optional entity
+  costs and contrasts. Designs report achieved risk, expected cost, and
+  certainty-core size.
 - A proxy-assisted difference estimator that is exactly unbiased whatever the
   proxy says, so a poor classifier costs variance and never bias.
 - `estimate_share_effect`, for the case where the purchased label builds a
