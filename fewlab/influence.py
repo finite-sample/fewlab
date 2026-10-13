@@ -205,9 +205,9 @@ def contribution_scores(
             `W = L L'` and `b_j = ||L' h_j||^2 (a_j' a_j)`. Use it when a
             single coefficient or a specific comparison is the estimand.
         label_norms: The squared label norms `a_j' a_j`. The default of 1.0 is
-            exact for a one-hot taxonomy or a binary indicator, which is why no
-            pilot labeling is needed in those cases. Supply an array to weight
-            entities by known or estimated label magnitude.
+            exact for a complete one-hot taxonomy and an upper bound for an
+            unknown binary indicator. Supply an array for known squared label
+            norms; estimated norms give a planning criterion, not a guarantee.
 
     Returns:
         The scores `b_j`, indexed by entity.

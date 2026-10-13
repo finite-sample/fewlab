@@ -126,12 +126,10 @@ def test_the_intervals_cover_at_their_nominal_rate(population) -> None:
 
 
 def test_a_fixed_size_draw_is_covered_conservatively(population) -> None:
-    """Cube draws have smaller variance than the Poisson formula reports.
+    """Poisson SEs are conservative on this population's cube draws.
 
-    The package says so in `design_risk`; this measures it rather than assuming
-    it. Fixing the sample size and balancing on the influence projections both
-    remove variation the Poisson expression still counts, so intervals must come
-    out at least as wide as they need to be.
+    This empirical property is specific to the fixture, not a universal bound
+    for fixed-size designs with arbitrary signed contributions.
     """
     study, labels, _ = population
     design = study.design(BUDGET)

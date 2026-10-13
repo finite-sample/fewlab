@@ -82,8 +82,9 @@ class Estimate:
 
     Attributes:
         coefficients: `(p, q)` estimate of `B`, features by label class.
-        design_se: Standard errors from not having labeled every entity. Exact
-            under Poisson sampling and conservative under fixed-size sampling.
+        design_se: Label-sampling standard errors from the chosen covariance
+            estimator. The Poisson covariance estimator is design-unbiased for
+            independent draws; other designs require different estimators.
         regression_se: Standard errors from having finitely many units, or None
             when the inputs needed to compute them were not supplied.
         total_se: The two components combined in quadrature, or None.
@@ -179,8 +180,8 @@ def _design_covariance(
     """Estimate the design covariance of `vec(B)` under the draw that happened.
 
     The Poisson estimator sums squared contributions weighted by
-    `(1 - pi_j)`. It is exact for independent Bernoulli trials and conservative
-    for anything else, because it counts variation the actual design removed.
+    `(1 - pi_j)`. It is unbiased for independent Bernoulli trials. For other
+    designs it omits joint-inclusion terms and has no universal bound.
 
     Fixing the sample size removes the variation in how many entities were
     drawn, and the Hajek estimator subtracts it by centring each contribution on
@@ -302,8 +303,8 @@ def estimate(
             is the unbiased estimator. See `trim_alpha` before departing from
             it.
         variance: Which variance estimator to use. `"poisson"` is exact for an
-            independent Bernoulli draw and conservative otherwise, which is why
-            it is the safe default. `"hajek"` accounts for a fixed sample size,
+            independent Bernoulli draw; it has no universal conservatism
+            guarantee for other designs. `"hajek"` accounts for a fixed sample size,
             and `"balanced"` also accounts for the auxiliaries a cube draw held
             fixed; use them only when the sample was drawn that way, since on a
             Poisson draw they understate.

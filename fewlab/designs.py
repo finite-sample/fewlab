@@ -66,11 +66,10 @@ class LabelDesign:
 def design_risk(scores: pd.Series | np.ndarray, pi: pd.Series | np.ndarray) -> float:
     """Compute the Poisson design risk `sum_j (1 - pi_j) / pi_j * b_j`.
 
-    This is exact when entities are drawn as independent Bernoulli trials. Any
-    fixed-size design with the same first-order probabilities -- a simple random
-    tail, a cube draw -- has a smaller variance, because fixing the sample size
-    and balancing on auxiliaries both remove variation this expression still
-    counts. Treat it as exact for Poisson and as an upper bound otherwise.
+    This is exact when entities are drawn as independent Bernoulli trials and
+    scores include true squared label norms. Fixed-size and balanced designs
+    involve joint inclusion probabilities; this expression is a planning
+    criterion for them, not a universal upper bound.
 
     Args:
         scores: Contribution scores `b_j`.
@@ -87,36 +86,141 @@ def design_risk(scores: pd.Series | np.ndarray, pi: pd.Series | np.ndarray) -> f
         return 0.0
     if (p[contributes] <= 0).any():
         return float("inf")
-    return float(np.sum((1.0 - p[contributes]) / p[contributes] * b[contributes]))
+    return float(np.sum((b[contributes] / p[contributes]) * (1.0 - p[contributes])))
 
 
-def _root_ratios(
+def _design_inputs(
     scores: pd.Series, cost: pd.Series | np.ndarray | float | None
-) -> np.ndarray:
-    """Compute `sqrt(b_j / c_j)`, the quantity probabilities are proportional to.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Validate scores and align costs to their entities.
 
     Args:
-        scores: Contribution scores `b_j`.
-        cost: Per-entity labeling cost, or None for uniform cost.
+        scores: Nonnegative contribution scores with unique entity identifiers.
+        cost: Positive costs; indexed costs are aligned by entity.
 
     Returns:
-        The ratios, with zeros wherever `b_j` is zero.
+        Score and cost arrays in the score index order.
 
     Raises:
-        ValueError: If costs are not strictly positive or are misaligned.
+        ValueError: If scores or costs are invalid or indexes do not match.
     """
+    if not scores.index.is_unique:
+        raise ValueError("scores must have unique entity identifiers")
     b = scores.to_numpy(dtype=float)
-    if cost is None:
-        c = np.ones_like(b)
-    else:
-        c = np.asarray(cost, dtype=float)
-        if c.ndim == 0:
-            c = np.full_like(b, float(c))
-        if c.size != b.size:
-            raise ValueError(f"cost must have {b.size} entries, got {c.size}")
-    if (c <= 0).any():
-        raise ValueError("cost must be strictly positive for every entity")
-    return np.sqrt(np.maximum(b, 0.0) / c)
+    if not np.isfinite(b).all() or (b < 0).any():
+        raise ValueError("scores must be finite and nonnegative")
+    if isinstance(cost, pd.Series):
+        if (
+            not cost.index.is_unique
+            or len(cost) != len(scores)
+            or not scores.index.isin(cost.index).all()
+        ):
+            raise ValueError("cost index must match the score entities")
+        cost = cost.reindex(scores.index).to_numpy(dtype=float)
+    c = np.asarray(1.0 if cost is None else cost, dtype=float)
+    if c.ndim == 0:
+        if not np.isfinite(c) or c <= 0:
+            raise ValueError("cost must be finite and strictly positive")
+        c = np.full_like(b, float(c))
+    if c.shape != b.shape:
+        raise ValueError(f"cost must have shape {b.shape}, got {c.shape}")
+    if not np.isfinite(c).all() or (c <= 0).any():
+        raise ValueError("cost must be finite and strictly positive")
+    return b, c
+
+
+def min_cost_for_risk(
+    scores: pd.Series,
+    risk_limit: float,
+    *,
+    cost: pd.Series | np.ndarray | float | None = None,
+) -> LabelDesign:
+    """Minimize expected labeling cost for a Poisson risk ceiling.
+
+    Solve `min sum(c_j pi_j)` subject to
+    `sum(b_j (1 - pi_j) / pi_j) <= risk_limit`. The solution is
+    `pi_j = min(1, lambda sqrt(b_j / c_j))`. For an uncapped tail T,
+    `lambda = sum_T sqrt(b_j c_j) / (risk_limit + sum_T b_j)`.
+    Sorting the ratios identifies the certainty core, including an empty core.
+
+    The risk is exact for independent Bernoulli draws when the scores include
+    the true squared label norms. Unit norms are exact for a complete one-hot
+    taxonomy and conservative for an unknown binary indicator. Estimated norms
+    give a planning criterion. A scalar contrast targets its variance; joint
+    coefficient loss targets the sum of coefficient variances. This ceiling
+    excludes regression sampling uncertainty and does not bound realized error.
+
+    Args:
+        scores: Finite, nonnegative contribution scores indexed by unique entity.
+        risk_limit: Finite, nonnegative ceiling in squared estimand units.
+        cost: Positive finite labeling costs. None means unit costs. A Series
+            must contain exactly the score entities and is aligned by index.
+
+    Returns:
+        A design for `Study.draw(..., fixed_size=False)`. Its `budget` is the
+        expected label count; diagnostics also report expected cost and risk.
+        Zero-score entities have zero probability. Guarantees apply only to
+        the scored estimand, not to other coefficients or to balanced draws.
+
+    Raises:
+        ValueError: If scores, costs, or the ceiling are invalid.
+        ArithmeticError: If finite probabilities satisfying the ceiling cannot
+            be represented numerically.
+
+    Examples:
+        >>> import pandas as pd
+        >>> from fewlab import min_cost_for_risk
+        >>> design = min_cost_for_risk(pd.Series([1.0] * 10), risk_limit=40.0)
+        >>> round(design.budget, 6), round(design.risk, 6)
+        (2.0, 40.0)
+    """
+    b, c = _design_inputs(scores, cost)
+    if not np.isfinite(risk_limit) or risk_limit < 0:
+        raise ValueError("risk_limit must be finite and nonnegative")
+    pi = np.zeros_like(b)
+    active = np.flatnonzero(b > 0)
+    if risk_limit == 0:
+        pi[active] = 1.0
+    elif active.size:
+        with np.errstate(over="raise", invalid="raise", divide="raise"):
+            # Use extended precision where available; fail on arithmetic overflow.
+            weights = b[active].astype(np.longdouble)
+            costs = c[active].astype(np.longdouble)
+            ratios = np.sqrt(weights) / np.sqrt(costs)
+            order = np.argsort(-ratios, kind="stable")
+            mass = np.sqrt(weights[order]) * np.sqrt(costs[order])
+            mass_tail = np.cumsum(mass[::-1])[::-1]
+            score_tail = np.cumsum(weights[order][::-1])[::-1]
+            for k, position in enumerate(order):
+                lam = mass_tail[k] / (np.longdouble(risk_limit) + score_tail[k])
+                if lam * ratios[position] <= 1:
+                    tail = order[k:]
+                    pi[active[tail]] = np.asarray(lam * ratios[tail], dtype=float)
+                    break
+                pi[active[position]] = 1.0
+    if not np.isfinite(pi).all() or (pi[active] <= 0).any():
+        raise ArithmeticError("risk ceiling requires unrepresentable probabilities")
+    # Round toward feasibility when converting the analytic solution to float.
+    pi[active] = np.minimum(1.0, np.nextafter(pi[active], 1.0))
+    risk = design_risk(b, pi)
+    expected_cost = float(c @ pi)
+    if not np.isfinite(expected_cost) or not np.isfinite(risk):
+        raise ArithmeticError("design cost or risk is not finite")
+    if risk > risk_limit and not np.isclose(risk, risk_limit, rtol=1e-12, atol=0):
+        raise ArithmeticError("computed design does not meet the risk ceiling")
+    return LabelDesign(
+        probabilities=pd.Series(pi, index=scores.index, name="pi"),
+        scores=scores.copy(),
+        risk=risk,
+        method="min_cost_for_risk",
+        diagnostics={
+            "expected_cost": expected_cost,
+            "risk_limit": float(risk_limit),
+            "achieved_risk": risk,
+            "n_certainty": int((pi >= CERTAINTY).sum()),
+            "n_contributing": int(active.size),
+        },
+    )
 
 
 def poisson_pps(
@@ -140,9 +244,9 @@ def poisson_pps(
     absorbs most of the budget, which is the whole reason the design pays.
 
     `lambda` is solved exactly rather than by search. Sorting the ratios
-    descending, if the top `k` are capped then `B = k + lambda * sum_{j>k} r_j`,
-    so `lambda` is determined by `k`, and `k` is the smallest value consistent
-    with itself.
+    descending, a proposed core leaves a tail with
+    `lambda = (B - sum_core c_j) / sum_tail sqrt(b_j c_j)`. Start with an empty
+    core and promote an entity only when its proposed probability exceeds one.
 
     Args:
         scores: Contribution scores `b_j` from `contribution_scores`.
@@ -175,55 +279,38 @@ def poisson_pps(
         >>> bool((design.probabilities > 0).all())
         True
     """
-    if budget <= 0:
-        raise ValueError(f"budget must be positive, got {budget}")
+    if not np.isfinite(budget) or budget <= 0:
+        raise ValueError(f"budget must be finite and positive, got {budget}")
 
-    r = _root_ratios(scores, cost)
-    c = (
-        np.ones_like(r)
-        if cost is None
-        else np.broadcast_to(np.asarray(cost, dtype=float), r.shape)
-    )
+    b, c = _design_inputs(scores, cost)
+    r = np.sqrt(b) / np.sqrt(c)
     contributes = r > 0
     max_spend = float(c[contributes].sum())
-    if budget > max_spend:
+    if budget > max_spend and not np.isclose(
+        budget, max_spend, rtol=8 * np.finfo(float).eps, atol=0
+    ):
         raise ValueError(
             f"budget {budget} exceeds the cost {max_spend} of labeling every "
             f"entity that contributes to the estimand; nothing is left to buy"
         )
 
+    budget = min(budget, max_spend)
     pi = np.zeros_like(r)
     idx = np.flatnonzero(contributes)
     order = idx[np.argsort(-r[idx], kind="stable")]
     r_sorted = r[order]
     c_sorted = c[order]
 
-    # Grow the certainty core until the next entity would not be capped.
-    tail_mass = float(np.sum(r_sorted * c_sorted))
+    # Check the empty core first: low budgets need not make any item certain.
+    tail_mass = np.cumsum((r_sorted * c_sorted)[::-1])[::-1]
     spent = 0.0
-    k = 0
-    while k < order.size:
-        tail_mass -= r_sorted[k] * c_sorted[k]
+    for k, position in enumerate(order):
+        lam = (budget - spent) / tail_mass[k]
+        if lam * r_sorted[k] <= 1.0:
+            pi[order[k:]] = np.minimum(1.0, lam * r_sorted[k:])
+            break
+        pi[position] = 1.0
         spent += c_sorted[k]
-        remaining = budget - spent
-        if remaining <= 0:
-            break
-        if tail_mass <= 0:
-            k += 1
-            break
-        lam = remaining / tail_mass
-        if k + 1 < order.size and lam * r_sorted[k + 1] < 1.0:
-            k += 1
-            break
-        k += 1
-
-    pi[order[:k]] = 1.0
-    rest = order[k:]
-    if rest.size:
-        tail_mass = float(np.sum(r[rest] * c[rest]))
-        remaining = budget - float(c[order[:k]].sum())
-        lam = remaining / tail_mass if tail_mass > 0 else 0.0
-        pi[rest] = np.minimum(1.0, lam * r[rest])
 
     if pi_min > 0:
         pi[contributes] = np.maximum(pi[contributes], pi_min)
@@ -261,13 +348,10 @@ def core_plus_tail(scores: pd.Series, budget: int) -> LabelDesign:
 
     `R(H)` is a *planning criterion*, and the distinction matters. It is the
     exact risk when the tail is drawn as independent Bernoulli trials at
-    `p_H`. Draw the tail instead as a fixed-size simple random sample of
-    `B - H` and the true variance is smaller, because fixing the count removes
-    the sample-size variability and the contributions enter centered on the tail
-    mean. So `R(H)` is an upper bound for the fixed-size draw, and the core size
-    it selects is optimal for the Poisson design and near-optimal for the SRS
-    one. `tests/test_designs.py` checks that gap by simulation rather than
-    assuming it.
+    `p_H`. For a fixed-size simple random tail, the true variance instead uses
+    contributions centered on their tail mean and a finite-population correction.
+    Depending on the contributions it can exceed the Poisson criterion. The core
+    size selected here is optimal for the Poisson design only.
 
     This design is never better than `poisson_pps`, which is free to vary the
     tail probabilities. It is worth having because a uniform tail is a simple

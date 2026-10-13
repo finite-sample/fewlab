@@ -26,7 +26,13 @@ import pandas as pd
 from .calibration import calibrate_weights
 from .counts import CountMatrix, as_counts
 from .cube import cube_sample
-from .designs import LabelDesign, core_plus_tail, poisson_pps, simple_random
+from .designs import (
+    LabelDesign,
+    core_plus_tail,
+    min_cost_for_risk,
+    poisson_pps,
+    simple_random,
+)
 from .estimator import Estimate, LabelSample, estimate
 from .influence import Influence, contribution_scores, direction_spectrum, influence
 from .utils import _get_random_generator
@@ -268,6 +274,34 @@ class Study:
             return simple_random(b, int(budget))
         raise ValueError(f"unknown method {method!r}")
 
+    def design_for_risk(
+        self,
+        risk_limit: float,
+        *,
+        cost: pd.Series | np.ndarray | float | None = None,
+        **score_kwargs: object,
+    ) -> LabelDesign:
+        """Buy the least expected cost for a label-sampling risk ceiling.
+
+        Use independent draws via `draw(design, fixed_size=False)`. A single
+        contrast uses a variance ceiling (SE squared); the default coefficient
+        loss bounds the sum of coefficient variances. With unit label norms,
+        risk is exact for a one-hot taxonomy and bounds an unknown binary label.
+        The ceiling excludes regression uncertainty and realized-sample error.
+        A contrast design protects only that contrast, not other coefficients.
+
+        Args:
+            risk_limit: Finite, nonnegative Poisson risk ceiling.
+            cost: Positive costs, or None for minimum expected label count.
+            **score_kwargs: Forwarded to `scores`, including `loss`, `contrast`,
+                and `label_norms`. Estimated norms give a planning criterion.
+
+        Returns:
+            The design, with achieved risk and expected cost in diagnostics.
+        """
+        scores = self.scores(**score_kwargs)  # type: ignore[arg-type]
+        return min_cost_for_risk(scores, risk_limit, cost=cost)
+
     def draw(
         self,
         design: LabelDesign,
@@ -379,10 +413,9 @@ class Study:
                 difference estimator.
             alpha: Shrinkage on the sampled correction; 1.0 is unbiased.
             variance: Which variance estimator to use. The default is exact for
-                a Poisson draw and conservative for a fixed-size one; pass
-                `"balanced"` after a cube draw to recover what that conservatism
-                costs, which on a realistic panel is about half the width of the
-                interval.
+                a Poisson draw, with no universal bound for other designs.
+                Pass `"balanced"` after a cube draw to account for the
+                auxiliaries used in balancing.
 
         Returns:
             The estimate with both variance components.

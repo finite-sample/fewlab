@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `min_cost_for_risk` and `Study.design_for_risk` minimize expected label cost
+  subject to a Poisson risk ceiling, with optional entity costs and contrasts.
+  Designs report achieved risk, expected cost, and certainty-core size.
+
+### Fixed
+
+- PPS now checks whether any certainty core is needed before pinning an entity.
+  Ten equal scores with a budget of two now receive probability 0.2 each, reducing
+  risk from 72 to the optimum of 40.
+- Indexed costs are aligned to score entities and validated before optimization.
+- Documentation distinguishes exact one-hot risk from bounds for binary labels,
+  and removes the unsupported claim that Poisson variance always bounds the
+  variance of fixed-size or balanced sampling.
+
 ## [3.0.0] - 2026-08-20
 
 The estimand has an exact finite-population identity that the package was

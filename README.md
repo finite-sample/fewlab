@@ -96,6 +96,15 @@ The rule also solves the reverse question. `row_se_min_labels` gives the fewest
 labels that hold every row's standard error under a ceiling you name, rather than
 the smallest error for a budget you name.
 
+To set a regression-risk ceiling instead, use
+`study.design_for_risk(risk_limit=0.01**2, contrast=contrast)` and
+`study.draw(design, fixed_size=False)`. This buys the least expected labeling
+cost for the chosen contrast's label-sampling variance. Omit `contrast` to bound
+the sum of coefficient variances. Unit label norms give exact aggregate risk
+for a complete one-hot taxonomy and a conservative bound for a binary indicator.
+The ceiling excludes regression uncertainty and realized error; see the
+[quickstart](docs/quickstart.rst) for a complete example.
+
 ## Two standard errors, and when to stop paying
 
 ```

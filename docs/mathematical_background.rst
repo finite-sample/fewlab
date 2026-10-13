@@ -66,7 +66,7 @@ Which entities are worth labeling
 
 For a positive semidefinite :math:`W`, the loss
 :math:`\operatorname{tr}[W(\widehat\beta - \beta^*)(\widehat\beta - \beta^*)^\top]`
-has exact design risk
+has exact design risk under independent Bernoulli sampling
 
 .. math::
    \mathbb{E}_p L = \sum_{j=1}^m \frac{1-\pi_j}{\pi_j} b_j,
@@ -128,6 +128,43 @@ strictly positive probability to every entity with :math:`b_j > 0`. A probabilit
 floor is therefore unnecessary, and any floor moves the design away from minimum
 risk.
 
+Minimum cost for a risk ceiling
+-------------------------------
+
+:func:`fewlab.min_cost_for_risk` solves the reverse problem:
+
+.. math::
+   \min_{\pi} \sum_j c_j\pi_j
+   \quad\text{subject to}\quad
+   \sum_j b_j(1/\pi_j - 1) \le R,\qquad 0 < \pi_j \le 1\ (b_j>0).
+
+Convexity and the stationarity conditions give the same capped square-root rule.
+For a proposed uncapped tail :math:`T`, the binding risk constraint determines
+
+.. math::
+   \lambda = \frac{\sum_{j\in T}\sqrt{b_jc_j}}
+                       {R + \sum_{j\in T}b_j}.
+
+Sort by :math:`\sqrt{b_j/c_j}`, starting with an empty certainty core. Promote
+an entity only if its proposed probability exceeds one, and recompute the tail
+expression. This gives the global optimum in :math:`O(m\log m)` time. With
+:math:`R=0`, label every positive-score entity with certainty. Zero-score
+entities never need labels for the declared loss.
+
+Unit label norms give exact aggregate risk for a complete one-hot taxonomy.
+For an unknown binary indicator they bound its squared norm and therefore its
+risk. Estimated norms give a planning criterion rather than a guaranteed bound.
+A single contrast uses its variance (SE squared) as the ceiling; joint
+coefficient loss sums variances over coefficient and label columns. A zero
+contrast score does not imply zero contribution to every other coefficient, so
+the guarantee applies only to the declared estimand.
+
+Use :meth:`fewlab.Study.design_for_risk` followed by
+``study.draw(design, fixed_size=False)`` and the plain Horvitz-Thompson estimator.
+The ceiling bounds label-sampling risk under independent draws. It excludes
+regression uncertainty and realized errors and does not transfer automatically
+to balanced draws, proxy residuals, or shrunken weights.
+
 Certainty core with a uniform tail
 ----------------------------------
 
@@ -141,9 +178,9 @@ and give the remainder :math:`p_H = (K-H)/(m-H)`. With
 so the boundary follows from evaluating at most :math:`K` cutoffs. Promoting one
 more entity pays exactly when :math:`b_{H+1} > S_H/(K-H)`.
 
-This is a planning criterion. It is exact for a Bernoulli tail; a fixed-size
-simple random tail has smaller variance, because fixing the count removes the
-sample-size variability and contributions enter centered.
+This is exact for a Bernoulli tail. A fixed-size simple random tail instead
+uses centered contributions and a finite-population correction. Its variance
+can exceed this criterion when contributions have opposite signs.
 
 Variance
 --------
@@ -153,9 +190,11 @@ The design covariance of :math:`\operatorname{vec}(\widehat\beta)` is
 estimated without bias from the sample by
 :math:`\sum_{j \in S} \frac{1-\pi_j}{\pi_j^2} (a_j a_j^\top) \otimes (h_j h_j^\top)`.
 
-This is exact under Poisson sampling. A fixed-size or balanced draw has smaller
-true variance, so intervals from :meth:`fewlab.Study.draw` with
-``fixed_size=True`` are conservative.
+This is exact under Poisson sampling. Fixed-size and balanced draws also depend
+on joint inclusion probabilities; the Poisson expression is not a universal
+upper bound for their variance. Use variance estimators appropriate to the draw,
+and do not interpret a variance ceiling as a confidence-interval coverage
+guarantee.
 
 The total standard error has a second component the budget cannot touch:
 

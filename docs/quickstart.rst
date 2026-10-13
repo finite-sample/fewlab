@@ -63,12 +63,12 @@ sample, and only a sample can be estimated from.
    30
 
 The entities at probability one are the certainty core. You do not choose it;
-the budget constraint produces it.
+the budget constraint produces it. This nearly uniform example has no core.
 
 .. doctest::
 
-   >>> len(design.certain) > 0
-   True
+   >>> len(design.certain)
+   0
 
 Now label what was drawn and estimate.
 
@@ -82,6 +82,44 @@ Now label what was drawn and estimate.
    (3, 1)
    >>> bool((est.design_se.to_numpy() > 0).all())
    True
+
+Choose a risk ceiling instead of a budget
+-----------------------------------------
+
+``Study.design_for_risk`` finds the minimum expected labeling cost for a chosen
+Poisson risk ceiling. Unit costs minimize the expected number of labels. The
+result can have a fractional expected size, so draw independently with
+``fixed_size=False``.
+
+For one coefficient, pass its contrast vector and square the desired design SE.
+The default joint coefficient loss instead bounds the sum of variances over all
+coefficients and label columns. These ceilings concern label-sampling variance;
+they exclude regression sampling uncertainty and do not bound realized errors.
+
+.. doctest::
+
+   >>> contrast = np.array([0.0, 1.0, 0.0])
+   >>> limited = study.design_for_risk(0.01**2, contrast=contrast)
+   >>> limited.risk <= 0.01**2 * (1 + 1e-12)
+   True
+   >>> limited.diagnostics["expected_cost"] == limited.budget
+   True
+   >>> draw = study.draw(limited, fixed_size=False, random_state=2)
+   >>> observed = pd.Series(rng.integers(0, 2, len(draw)), index=draw.items)
+   >>> result = study.estimate(draw, observed)
+   >>> result.coefficients.shape
+   (3, 1)
+
+Default unit label norms give exact aggregate risk for a complete one-hot
+taxonomy and a conservative ceiling for an unknown binary indicator. Estimated
+label norms give a planning criterion. A contrast design protects only the
+chosen contrast; other coefficients may lose unbiasedness if their contributing
+entities have zero scores for that contrast. The ceiling does not extend to
+balanced draws or to a proxy or shrinkage estimator with different contributions.
+
+Pass ``cost=`` to minimize expected expenditure with unequal label costs. An
+indexed cost Series is matched by entity; ``design.budget`` remains the expected
+number of labels, while ``design.diagnostics["expected_cost"]`` reports cost.
 
 Two standard errors
 -------------------
