@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [3.0.0] - Unreleased
+## [3.0.0] - 2026-10-13
 
 The estimand has an exact finite-population identity that the package was
 approximating instead of using. Writing `V` for row shares and `A` for entity
