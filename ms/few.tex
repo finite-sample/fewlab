@@ -35,6 +35,8 @@
 % LibertinusSans-Regular.otf and LibertinusMath-Regular.otf.
 \usepackage{booktabs}
 \usepackage{microtype}
+% Long inline math and code paths otherwise overrun the margin.
+\setlength{\emergencystretch}{2em}
 \usepackage{enumitem}
 \usepackage[authoryear,round]{natbib} % for \citet / \citep
 \usepackage{graphicx}
@@ -319,7 +321,7 @@ The outcome is the published per-user exposure rate, which is exactly $y=Va$, an
 
 \begin{figure}[t]
 \centering
-\includegraphics{generated/fig_efficiency.pdf}
+\includegraphics[width=\linewidth]{generated/fig_efficiency.pdf}
 \caption{Accuracy and interval validity against the labeling budget, for the four designs of Table~\ref{tab:evidence}. Left: Frobenius norm of the error in $\widehat\beta$, with a reference line at the norm of $\beta^*$ itself, so a series near the line is no better than reporting zero. Right: coverage of the nominal 95 percent interval, reference line at $0.95$. Both axes are logarithmic in the budget. Population and replication as in Table~\ref{tab:evidence}.}
 \label{fig:efficiency}
 \end{figure}
@@ -353,7 +355,7 @@ Two adjacent literatures supply the machinery. Two-phase validation designs opti
 
 The methods are implemented in the open-source Python package \texttt{fewlab} \citep{fewlab}. Its API keeps apart the three objects this argument distinguishes. A \texttt{Study} holds $(C,X)$ and computes $H$; \texttt{Study.design} returns inclusion probabilities under a declared loss, with \texttt{robust\_pps} for the prevalence-bounded case of Proposition~\ref{prop:robust}; \texttt{Study.draw} realizes them by Poisson trials or a balanced cube draw; and \texttt{Study.estimate} returns $\widehat\beta$ with both variance components and a choice of variance estimator matched to the draw. The two estimators that answer different questions live in their own modules and say so: \texttt{estimate\_share\_effect} for a label-built covariate, and \texttt{estimate\_superpopulation} for the generalized least squares target. Only a realized draw is accepted by the estimator, since a ranking carries no inclusion probabilities and cannot be weighted; that constraint is enforced by the type rather than by documentation. Counts may be supplied in long format, one row per unit and item, which is how panels arrive and what keeps a matrix of the density reported in \S\ref{sec:evidence} from being materialized.
 
-Every number in Tables~\ref{tab:evidence} and \ref{tab:frontier} and in Figure~\ref{fig:efficiency} is produced by \texttt{benchmarks/make\_exhibits.py} from a hashed extract distributed with the repository, in which panelist identifiers and domain names are replaced by salted digests. See \url{https://github.com/finite-sample/fewlab}.
+Every number in Tables~\ref{tab:evidence} and \ref{tab:frontier} and in Figure~\ref{fig:efficiency} is produced by \path{benchmarks/make_exhibits.py} from a hashed extract distributed with the repository, in which panelist identifiers and domain names are replaced by salted digests. See \url{https://github.com/finite-sample/fewlab}.
 
 \section*{Assumptions and limits}
 

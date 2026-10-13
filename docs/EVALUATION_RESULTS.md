@@ -46,35 +46,3 @@ That writes the tables, the figure, and every number the manuscript quotes, as
 The extract itself is regenerated from the private source repository by
 `benchmarks/build_yg_extract.py`; see `benchmarks/data/README.md` for its
 provenance and for what the hashing does and does not protect.
-
-## What the previous evaluation measured
-
-Versions up to 2.0 reported a 1.14 times efficiency gain, a 9.2% gain at
-moderate budgets, and a roughly 33% reduction in standard errors. All three are
-withdrawn.
-
-The 1.14 figure was the mean of five per-coefficient ratios: 1.6972, 0.99993,
-1.00016, 1.00026 and 0.99941. Four of those are noise at a twentieth of a
-percent, and their mean with the fifth is 1.1394. The accompanying text claimed
-the gain was "consistent across all coefficients"; the results file in the same
-directory showed it was one intercept.
-
-The reason nothing else moved is that the simulation could not have detected a
-difference. Its counts were generated as activity times popularity, a rank-one
-mean, so every entity's influence vector pointed the same way and the normalized
-influence matrix had singular values 1.000, 0.001, 0.000, 0.000. On such a
-population every criterion ranks entities identically and every method selects
-the same set, which is why all four methods reported errors agreeing to four
-significant figures. The simulation also drew a `beta_true`, never used it to
-generate labels, counts or outcomes, and then measured distance to it, adding
-roughly 2.25 of irrelevant variance to every reported number.
-
-The 33% figure cited a notebook that imported the package only to print its
-version number, never called a selection function, subsampled rows rather than
-entities, and reported ratios averaging 1.00 in its own stored output, one of
-them below 1. That notebook has been rewritten as a walkthrough that uses the
-package.
-
-`Study.diagnostics["direction_spectrum"]` now reports the degeneracy that hid the
-first problem, and the test suite asserts on it, so a population that cannot
-distinguish designs fails the harness instead of flattering it.

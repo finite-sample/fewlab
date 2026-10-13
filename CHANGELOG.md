@@ -62,7 +62,11 @@ an amount that cannot be recovered from the data they have, and re-draw.
   between 0.9994 and 1.0003. The evaluation drew a `beta_true` it never used to
   generate anything, and its counts were `activity_i x popularity_j`, a rank-one
   mean on which every entity's influence points the same way, so no method could
-  differ from any other. All prior efficiency claims are withdrawn.
+  differ from any other. The 9.2% gain at moderate budgets and the roughly 33%
+  reduction in standard errors are withdrawn with it; the latter came from a
+  notebook that never called a selection function. All prior efficiency claims
+  are withdrawn, and `direction_spectrum` now flags a population that cannot
+  distinguish designs.
 
 ### Added
 

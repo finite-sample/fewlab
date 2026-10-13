@@ -167,20 +167,11 @@ pip install -e ".[dev]"   # tests, linting, pre-commit
 pip install -e ".[docs]"  # documentation
 ```
 
-## What changed in 3.0
+## Upgrading from 2.x
 
-Version 2 selected the top entities by influence, then computed weights from a
-probability vector it derived from the *size* of the selected set, and called the
-result a Horvitz-Thompson estimate. Deterministic selection gives probability one
-to what it picks and zero to everything else, so no weight applied afterward makes
-it unbiased. Rankings and samples are now separate types and only a sample reaches
-an estimator.
-
-Version 2 also scored entities with `g_j'(X'X)⁻¹g_j` while documenting the
-coefficient variance criterion, which is `g_j'(X'X)⁻²g_j`. You now declare the
-loss. The published efficiency figures have been withdrawn and replaced; see
-[the evaluation](docs/EVALUATION_RESULTS.md) for what they measured and why it was
-not efficiency.
+3.0 changes the API throughout and has no compatibility shims. The
+[changelog](CHANGELOG.md) lists what was removed, what replaces it, and which 2.x
+results should be re-drawn.
 
 ## License
 

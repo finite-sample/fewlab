@@ -6,9 +6,7 @@ succeeded. Because their labels are known, the complete-label coefficient
     B = (X'X)^-1 X' V A
 
 is computable exactly, and every design can be scored against that same fixed
-target rather than against a guess. This is the property the previous evaluation
-lacked: it drew a `beta_true` that generated nothing and then measured distance
-to it.
+target rather than against a guess.
 
 Each design is realized many times over the *same* finite population, so the
 spread reported is design variance and nothing else.
