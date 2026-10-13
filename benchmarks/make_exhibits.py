@@ -49,7 +49,9 @@ def fmt(value: float, digits: int = 3) -> str:
     return f"{float(f'%.{digits}g' % value):g}"
 
 
-def diagnostics(study, labels, B, budget: int, reps: int) -> dict:
+def diagnostics(
+    study: fewlab.Study, labels: pd.DataFrame, B: np.ndarray, budget: int, reps: int
+) -> dict:
     """Measure why intervals from a poor design fail to cover.
 
     The variance estimator is unbiased under every design here, so a coverage
@@ -256,7 +258,7 @@ def _write_macros(path: Path, macros: dict) -> None:
     )
 
 
-def write_synthetic(out: Path, reps: int = 300) -> None:
+def write_synthetic(out: Path, covariate_reps: int = 300) -> None:
     """Run the synthetic experiments and write their macros.
 
     These are separate from the panel macros because they cost seconds rather
@@ -265,10 +267,12 @@ def write_synthetic(out: Path, reps: int = 300) -> None:
 
     Args:
         out: The generated directory.
-        reps: Replicates for the covariate experiment.
+        covariate_reps: Replicates for the covariate experiment. The variance
+            and bootstrap comparisons keep their own, larger defaults, which the
+            manuscript's numbers were generated with.
     """
     macros: dict = {}
-    macros.update(covariate_experiment(reps=reps))
+    macros.update(covariate_experiment(reps=covariate_reps))
     macros.update(loss_divergence())
     macros.update(variance_comparison())
     macros.update(bootstrap_comparison())
@@ -298,7 +302,7 @@ def main() -> None:
         redraw(args.out)
         return
     if args.synthetic_only:
-        write_synthetic(args.out, reps=min(args.reps, 300))
+        write_synthetic(args.out, covariate_reps=min(args.reps, 300))
         return
 
     study, labels = load(args.data)
@@ -394,7 +398,7 @@ def main() -> None:
     }
 
     _write_macros(args.out / "macros.tex", macros)
-    write_synthetic(args.out, reps=min(args.reps, 300))
+    write_synthetic(args.out, covariate_reps=min(args.reps, 300))
     print(json.dumps(macros, indent=2))
 
 
