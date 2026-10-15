@@ -62,6 +62,7 @@ docs = [
     "matplotlib>=3.4",
     "scipy>=1.7",
     "seaborn>=0.11",
+    "marimo>=0.25",
 ]
 
 [tool.ruff]
@@ -99,8 +100,9 @@ convention = "google"
 # can be dispatched by name, and not every member uses every argument. S101:
 # the asserts state invariants of the script's own config object.
 "docs/evaluate_*.py" = ["D", "N803", "N806", "T201", "ARG", "S101"]
-# A notebook prints its results; that is what a notebook is for.
-"*.ipynb" = ["T201"]
+# B018: a marimo cell displays its last expression, so a bare name is the
+# output, not a mistake.
+"docs/examples/*.py" = ["B018"]
 # Standalone scripts run by hand against the private source panel. T201: the
 # table is the output. N803/N806: X, B and H are the names in the derivations.
 "benchmarks/**" = ["D", "N803", "N806", "T201", "S101"]

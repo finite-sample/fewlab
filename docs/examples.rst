@@ -3,6 +3,16 @@ Examples
 
 Every block runs as a doctest.
 
+Try it in your browser
+----------------------
+
+`Which websites should you pay to label? <demo/index.html>`_ runs the whole
+decision on the real browsing panel, with a slider for the labeling budget. It
+runs Python in your browser, so there is nothing to install; the first load
+takes about half a minute. The source is ``docs/examples/label_budget.py`` in
+the repository, a `marimo <https://marimo.io>`_ notebook that also runs as a
+plain script.
+
 A browsing panel
 ----------------
 
