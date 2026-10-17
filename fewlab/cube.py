@@ -14,7 +14,7 @@ The obvious approaches sacrifice the first requirement to get the other two. A
 draw of ``budget`` items without replacement with probabilities *proportional to*
 ``pi`` (``rng.choice(..., replace=False, p=pi)``) does not have inclusion
 probabilities ``pi``: successive draws condition on what came before, and the
-gap is large, not a rounding artefact. On the package's own test fixture that
+gap is large, not a rounding artifact. On the package's own test fixture that
 draw gave items with ``pi == 1`` an inclusion rate of 0.75. Repairing a sample by
 greedily swapping items to improve balance is worse still, since the swap
 decisions depend on the data and distort ``pi`` further -- the same fixture fell
@@ -241,7 +241,7 @@ def _systematic_pps(pi: np.ndarray, rng: np.random.Generator) -> np.ndarray:
     when a point lands in its interval, which happens with probability equal to
     its length, and the number of points landing in a run of total length ``S``
     is ``S`` when ``S`` is an integer -- so the marginals and the total both come
-    out right. The order is randomised so the result does not depend on how the
+    out right. The order is randomized so the result does not depend on how the
     caller happened to arrange the items.
 
     Args:

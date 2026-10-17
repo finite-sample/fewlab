@@ -130,12 +130,12 @@ sample and re-estimate.
   The sampler is now the cube method (Deville and Tille 2004), which holds the
   inclusion probabilities, the fixed sample size and the balancing constraints
   simultaneously. On the same fixture: certainty items included exactly 100% of
-  the time, correlation 0.9998, largest standardised deviation 2.08 sigma across
+  the time, correlation 0.9998, largest standardized deviation 2.08 sigma across
   120 items over 4000 draws, sample size exactly the budget every time. It is also
   roughly 3x faster, being O(m) rather than a bounded local search.
 
 - **`core_plus_tail` reports the design it runs.** It returned the A-optimal `pi`
-  it optimised over, but selects its core deterministically, so core items are
+  it optimized over, but selects its core deterministically, so core items are
   included with probability one. Weighting them by `1 / pi_j > 1` inflated exactly
   the items chosen for having the most influence. `probabilities` and `ht_weights`
   now describe the executed design: one for the core, and the tail's own rescaled
@@ -143,7 +143,7 @@ sample and re-estimate.
 
 - **`Design.sample(method="balanced")` reports the delivered probabilities.**
   `pi_aopt_for_budget` hits its budget to a solver tolerance rather than exactly;
-  the reported vector is now the one the fixed-size design realises.
+  the reported vector is now the one the fixed-size design realizes.
 
 - **`calibrate_weights(nonneg=True)` no longer breaks the constraint it solves.**
   It computed the exact chi-square calibration and then clipped negative weights
@@ -184,7 +184,7 @@ sample and re-estimate.
 ### Removed
 
 - **Breaking:** `balanced_fixed_size` no longer takes `max_swaps` or `tol`. Both
-  parameterised the greedy search that has been removed; the cube method has no
+  parameterized the greedy search that has been removed; the cube method has no
   corresponding knobs. No caller in the package passed either.
 
 ## [1.1.1] and earlier

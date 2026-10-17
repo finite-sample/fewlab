@@ -182,7 +182,7 @@ def write_figure(table: pd.DataFrame, norm: float, path: Path) -> None:
 
     Two panels because there are two questions. The left asks how close the
     estimate gets, against the size of the quantity being estimated. The right
-    asks whether the interval around it can be believed. Series are labelled
+    asks whether the interval around it can be believed. Series are labeled
     directly rather than through a legend.
 
     Args:

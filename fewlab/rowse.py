@@ -1,7 +1,7 @@
 """Inclusion probabilities under row-wise standard-error constraints.
 
-Instead of fixing a budget and minimising variance, this module fixes a
-per-row variance ceiling and minimises the expected number of labels.
+Instead of fixing a budget and minimizing variance, this module fixes a
+per-row variance ceiling and minimizes the expected number of labels.
 """
 
 import warnings

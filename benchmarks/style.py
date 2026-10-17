@@ -1,8 +1,8 @@
 """One visual grammar for every exhibit in the paper.
 
-Centralized so that a change to type size or colour happens once. The palette is
-chosen to survive greyscale printing and the common colour-vision deficiencies:
-the four designs differ in lightness as well as hue, and each series is labelled
+Centralized so that a change to type size or color happens once. The palette is
+chosen to survive grayscale printing and the common colour-vision deficiencies:
+the four designs differ in lightness as well as hue, and each series is labeled
 directly rather than through a legend.
 """
 
@@ -12,7 +12,7 @@ import matplotlib as mpl
 
 mpl.use("Agg")
 
-# Okabe-Ito, which is colour-vision safe and separates in greyscale.
+# Okabe-Ito, which is colour-vision safe and separates in grayscale.
 DESIGN_STYLE = {
     "srs": {"color": "#767676", "marker": "o", "label": "Uniform"},
     "core_plus_tail": {

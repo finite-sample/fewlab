@@ -254,8 +254,8 @@ def _design_covariance(
         np.einsum("ki,ij,kj->k", whitened, pinv, whitened), 0.0, 1 - 1e-9
     )
     weights = base / (1.0 - leverage)
-    centred = residual
-    return (centred * weights[:, None]).T @ centred
+    centered = residual
+    return (centered * weights[:, None]).T @ centered
 
 
 def estimate(

@@ -160,3 +160,6 @@ ignore_notebooks = true
 pep621_dev_dependency_groups = ["dev", "test", "docs"]
 
 [tool.preen]
+
+[tool.codespell]
+builtin = "clear,rare,en-GB_to_en-US"

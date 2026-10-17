@@ -189,7 +189,7 @@ def test_balancing_actually_balances():
     coordinates and hands two of them to the landing phase. Measured ratio of
     medians here is 0.28, against 0.20 for the 120-item design in
     ``test_sampling_design.py``. The gate is set at 0.5 in both, which is a
-    characterisation with room rather than a derived tolerance -- unlike the
+    characterization with room rather than a derived tolerance -- unlike the
     inclusion-probability gates above, there is no nominal value for this to be
     checked against.
     """

@@ -82,7 +82,7 @@ def _replicate(study, labels, row, col, *, weights_of_one=False, **kwargs):
 def test_horvitz_thompson_is_unbiased_coefficient_by_coefficient(
     row, population
 ) -> None:
-    """Each coefficient separately, so cancelling biases cannot hide."""
+    """Each coefficient separately, so canceling biases cannot hide."""
     study, labels, B = population
     result = monte_carlo(
         _replicate(study, labels, row, 0), truth=float(B[row, 0]), reps=REPS, seed=5
