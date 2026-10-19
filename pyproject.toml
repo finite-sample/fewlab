@@ -28,7 +28,7 @@ Documentation = "https://finite-sample.github.io/fewlab/"
 Repository = "https://github.com/finite-sample/fewlab"
 
 [build-system]
-requires = ["uv_build>=0.12.5,<0.13"]
+requires = ["uv_build>=0.12.5,<0.14"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
