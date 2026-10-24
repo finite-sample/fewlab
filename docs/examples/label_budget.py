@@ -198,15 +198,14 @@ def _(mo):
 
 @app.cell
 def _(core, design, labels, mo, study):
-    sample = study.draw(design, random_state=0)
+    sample = study.draw(design, random_state=0, fixed_size=True)
     est = study.estimate(sample, labels.loc[sample.items])
     mo.md(
         f"{len(sample)} sites to label; the core is in every draw: "
         f"{set(core) <= set(sample.items)}.\n\n"
-        f"**{est.diagnostics['variance_ratio']:.1%}** of the estimate's"
-        " variance is due to labeling. A budget only moves that share; once it"
-        " is small, more labels buy almost nothing and the binding constraint"
-        " is the size of the panel."
+        f"Mean design SE: **{est.design_se.to_numpy().mean():.3f}**. "
+        "This uncertainty comes from labeling a subset of sites; the panel "
+        "and its features are held fixed."
     )
     return (est,)
 

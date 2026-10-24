@@ -159,8 +159,8 @@ coefficient loss sums variances over coefficient and label columns. A zero
 contrast score does not imply zero contribution to every other coefficient, so
 the guarantee applies only to the declared estimand.
 
-Use :meth:`fewlab.Study.design_for_risk` followed by
-``study.draw(design, fixed_size=False)`` and the plain Horvitz-Thompson estimator.
+Use :meth:`fewlab.Study.design_for_risk` followed by the default independent
+``study.draw(design)`` and the plain Horvitz-Thompson estimator.
 The ceiling bounds label-sampling risk under independent draws. It excludes
 regression uncertainty and realized errors and does not transfer automatically
 to balanced draws, proxy residuals, or shrunken weights.
@@ -190,20 +190,29 @@ The design covariance of :math:`\operatorname{vec}(\widehat\beta)` is
 estimated without bias from the sample by
 :math:`\sum_{j \in S} \frac{1-\pi_j}{\pi_j^2} (a_j a_j^\top) \otimes (h_j h_j^\top)`.
 
-This is exact under Poisson sampling. Fixed-size and balanced draws also depend
-on joint inclusion probabilities; the Poisson expression is not a universal
-upper bound for their variance. Use variance estimators appropriate to the draw,
-and do not interpret a variance ceiling as a confidence-interval coverage
-guarantee.
+This is exact under independent Poisson sampling. Fixed-size and balanced draws
+also depend on joint inclusion probabilities; the Poisson expression is not a
+universal upper bound for their variance. ``study.estimate`` therefore selects
+the Poisson estimator after the default independent draw and a residual-based
+approximation after a cube draw. The cube approximation is not design-unbiased
+in general. A variance ceiling is not a confidence-interval coverage guarantee.
 
-The total standard error has a second component the budget cannot touch:
+The finite-frame estimand conditions on the observed rows. Its design standard
+error has only the label-sampling component above. If the rows are viewed as a
+sample from a larger population under a homoskedastic regression model, there
+is a second component the labeling budget cannot touch:
 
 .. math::
    \operatorname{Var}(\widehat\beta)
    = \sigma^2 (X^\top X)^{-1} + \sum_j \frac{1-\pi_j}{\pi_j} b_j.
 
-Their ratio is a stopping rule. ``Estimate.diagnostics["variance_ratio"]``
-reports the share owed to the labeling budget.
+Request this optional calculation with ``study.estimate(..., row_model_se=True)``.
+Their ratio can guide a budget decision under that row-level model.
+``Estimate.diagnostics["variance_ratio"]`` reports the share owed to labeling.
+``Estimate.summary()`` uses the finite-frame design SE for its default statistic;
+the combined SE is reported separately. Survey regression software that weights
+sampled rows addresses a different design: here the sampled units are entities
+whose labels enter the outcomes of many observed rows.
 
 When the label is a covariate
 -----------------------------
@@ -222,9 +231,19 @@ References
   replacement from a finite universe.
 - Deville, J.-C., & Tillé, Y. (2004). Efficient balanced sampling: the cube
   method.
+- Deville, J.-C., & Tillé, Y. (2005). Variance approximation under balanced
+  sampling.
 - Deville, J.-C., & Särndal, C.-E. (1992). Calibration estimators in survey
   sampling.
 - Clark, R. G. (2022). Sample design for analysis using high-influence
   probability sampling.
 - Potter, F. (1990). A study of procedures to identify and trim extreme sampling
   weights.
+- Lohr, S. L. (2022). *Sampling: Design and Analysis*, 3rd ed.
+- Lumley, T. `survey: Survey sample analysis
+  <https://search.r-project.org/CRAN/refmans/survey/html/svydesign.html>`_, on
+  recording a draw's probabilities and using joint probabilities or an
+  approximation for PPS sampling without replacement.
+- Gelman, A. (2007). `Struggles with survey weighting and regression modeling
+  <https://sites.stat.columbia.edu/gelman/research/published/STS226.pdf>`_, on
+  distinguishing design-based population quantities from model-based targets.

@@ -59,8 +59,17 @@ sample, and only a sample can be estimated from.
    >>> bool((design.probabilities > 0).all())
    True
    >>> sample = study.draw(design, random_state=1)
-   >>> len(sample)
-   30
+   >>> sample.method.endswith("+poisson")
+   True
+
+The default draw uses independent Bernoulli trials. The budget is the expected
+number of labels; the realized count can differ. Set ``fixed_size=True`` when
+the count must be exact. That cube draw preserves the inclusion probabilities
+and balances on the influence totals, but its variance estimator is approximate.
+At a very small budget, an independent draw can contain no labels: the point
+estimate still follows the design, but its standard error is unavailable.
+A cube draw with no residual degrees of freedom likewise has no estimable
+standard error; fewlab reports ``NaN`` rather than zero.
 
 The entities at probability one are the certainty core. You do not choose it;
 the budget constraint produces it. This nearly uniform example has no core.
@@ -83,13 +92,22 @@ Now label what was drawn and estimate.
    >>> bool((est.design_se.to_numpy() > 0).all())
    True
 
+For a labeling handoff, call ``sample.save("label_sample.json")`` and send
+``sample.items`` to the labelers. The manifest records the complete probability
+frame, selected IDs, draw method, and study fingerprint. Later, load it with
+``LabelSample.load("label_sample.json")``, rebuild the same ``Study`` from the
+saved counts and features, and pass labels indexed by entity ID to
+``study.estimate``. A different study frame raises an error. The selected IDs
+and probabilities in the manifest are the record of the draw; a seed alone is
+not a replacement for them.
+
 Choose a risk ceiling instead of a budget
 -----------------------------------------
 
 ``Study.design_for_risk`` finds the minimum expected labeling cost for a chosen
 Poisson risk ceiling. Unit costs minimize the expected number of labels. The
 result can have a fractional expected size, so draw independently with
-``fixed_size=False``.
+the default independent draw.
 
 For one coefficient, pass its contrast vector and square the desired design SE.
 The default joint coefficient loss instead bounds the sum of variances over all
@@ -122,18 +140,29 @@ Pass ``cost=`` to minimize expected expenditure with unequal label costs. An
 indexed cost Series is matched by entity; ``design.budget`` remains the expected
 number of labels, while ``design.diagnostics["expected_cost"]`` reports cost.
 
-Two standard errors
--------------------
+Design and model standard errors
+--------------------------------
 
-One component comes from having labeled only some entities, the other from
-having only so many units. The budget moves the first and not the second, and
-their ratio tells you when to stop paying.
+``design_se`` measures the uncertainty due to labeling only some entities,
+conditional on the observed rows and entity frame. This is the default basis of
+``est.summary()``. The sample records its draw method, so estimation uses the
+exact Poisson variance formula after an independent draw and the balanced
+residual approximation after a cube draw. Ordinary survey regression weights
+for the rows do not represent this entity-label draw.
+
+Pass ``row_model_se=True`` to request ``regression_se``, which additionally
+assumes the observed rows come from a
+homoskedastic row-level model. ``total_se`` combines the model and design
+components; these are secondary to inference for the observed frame. The
+budget moves the design component, and ``variance_ratio`` compares it with
+the combined variance under that model.
 
 .. doctest::
 
-   >>> est.regression_se is not None
+   >>> model_est = study.estimate(sample, labels, row_model_se=True)
+   >>> model_est.regression_se is not None
    True
-   >>> 0.0 <= est.diagnostics["variance_ratio"] <= 1.0
+   >>> 0.0 <= model_est.diagnostics["variance_ratio"] <= 1.0
    True
 
 Rankings are not samples

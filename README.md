@@ -88,9 +88,13 @@ study = Study.from_long(usage, features, unit="person", entity="item", count="n"
 
 design = study.design(budget=250)  # π_j = min(1, λ√(b_j/c_j))
 sample = study.draw(design, random_state=0)
+sample.save("label_sample.json")
 
 labels = your_labeling_pipeline(sample.items)
 
+from fewlab import LabelSample
+
+sample = LabelSample.load("label_sample.json")
 est = study.estimate(sample, labels)
 print(est.summary())
 ```
@@ -104,8 +108,10 @@ Step by step, what that does:
 3. Label with certainty every entity where the cap binds. You do not pick this
    head; the constraint produces it. In a heavy-tailed population it absorbs most
    of the budget, which is why the design pays.
-4. Sample the rest at `π_j`, not uniformly. The cube method lands exactly on
-   budget and balances on the influence totals.
+4. Draw each remaining entity independently at `π_j`. The budget is the
+   expected number of labels, so the realized count varies. If an exact count
+   is required, `study.draw(design, fixed_size=True)` uses the cube method to
+   balance on the influence totals.
 5. Weight by `1/π_j`. Head entities get weight 1; tail entities get more, standing
    in for the tail you did not label.
 
@@ -126,17 +132,51 @@ for a complete one-hot taxonomy and a conservative bound for a binary indicator.
 The ceiling excludes regression uncertainty and realized error; see the
 [quickstart](docs/quickstart.rst) for a complete example.
 
-## Two standard errors, and when to stop paying
+## Inference for the observed frame
+
+`est.design_se` measures uncertainty from labeling only some entities. It
+conditions on the observed rows, their features, and the entity frame. The
+default `est.summary()` uses this standard error. Independent draws use the
+Poisson variance estimator; cube draws use a balanced residual approximation.
+The estimator is selected from the recorded draw method. The Poisson risk shown
+by a design is exact for independent draws and only a planning criterion for
+cube draws.
+
+Save the draw before sending its selected IDs for labeling. The JSON manifest
+stores every entity ID and inclusion probability, which IDs were selected, the
+draw method, the random seed when one was supplied, and a fingerprint of the
+counts and features. Keep the input counts and features too: they define the
+finite frame and are needed to resume estimation. `Study.estimate` rejects a
+sample loaded against different study data. Labels should be indexed by the
+selected entity IDs; their order does not matter. The manifest is an audit
+record, not a substitute for the labels or the study data.
+
+`summary()` names the variance method and marks the variance estimator as
+`design-unbiased variance`, `approximate`, or `unavailable`. A Poisson draw with the
+matching Poisson variance estimator gets the first status. Cube draws use a
+balanced approximation.
+
+Entity labels are the sampling units here: a single label can affect every
+row's outcome. Applying ordinary survey weights to the regression rows would
+describe a different sampling design.
+
+## Row-level model uncertainty and when to stop paying
+
+If the observed rows are themselves viewed as a sample from a larger population,
+Pass `row_model_se=True` to `study.estimate` when this model is appropriate.
+`regression_se` adds a homoskedastic row-level model assumption. `total_se`
+combines that component with label-sampling uncertainty. Neither is part of the
+finite-frame design SE.
 
 ```
 Var(β̂) = σ²(X'X)⁻¹  +  Σⱼ (1−πⱼ)/πⱼ · bⱼ
          your n units      your labeling budget
 ```
 
-Only the second term moves when you spend more. `Estimate.diagnostics` reports
-the share of total variance the budget is responsible for, which is a stopping
-rule: once the design term falls well below the regression term, more labels buy
-almost nothing.
+Only the second term moves when you spend more. Under the row-level model,
+`Estimate.diagnostics["variance_ratio"]` reports the share of combined variance
+owed to labeling; it can guide a budget decision, but it is not a design-based
+uncertainty measure for rows that were not sampled by a known design.
 
 ## Using a cheap classifier without giving up unbiasedness
 

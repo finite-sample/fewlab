@@ -1,6 +1,6 @@
 [project]
 name = "fewlab"
-version = "3.0.0"
+version = "4.0.0"
 description = "Pick the fewest items to label for unbiased OLS on shares"
 readme = "README.md"
 license = "MIT"
