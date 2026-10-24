@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from fewlab import Study
+from fewlab import LabelSample, Study
 from fewlab.counts import CountMatrix
 from tests.fixtures import one_hot_labels, panel
 
@@ -42,6 +44,12 @@ def test_long_format_reproduces_the_dense_build() -> None:
         entities=pd.Index(counts.columns),
     )
     np.testing.assert_allclose(dense.influence.H, sparse.influence.H, atol=1e-12)
+    assert dense.frame_fingerprint == sparse.frame_fingerprint
+    sample = dense.draw(dense.design(20), random_state=12)
+    labels = one_hot_labels(dense.influence.items, classes=2, seed=13)
+    from_dense = dense.estimate(sample, labels.loc[sample.items])
+    from_sparse = sparse.estimate(sample, labels.loc[sample.items])
+    np.testing.assert_allclose(from_dense.coefficients, from_sparse.coefficients)
 
 
 def test_the_sample_reports_the_probabilities_it_was_drawn_under(study) -> None:
@@ -62,15 +70,23 @@ def test_a_fixed_size_draw_delivers_exactly_the_budget(study) -> None:
         assert len(study.draw(design, random_state=seed, fixed_size=True)) == 40
 
 
-def test_a_poisson_draw_varies_in_size_around_the_budget(study) -> None:
-    """Independent trials trade an exact count for the simplest variance."""
+def test_the_default_draw_is_poisson_and_varies_around_the_budget(study) -> None:
+    """The main workflow has an expected count and exact design variance."""
     design = study.design(40)
     rng = np.random.default_rng(4)
-    sizes = [
-        len(study.draw(design, random_state=rng, fixed_size=False)) for _ in range(60)
-    ]
+    samples = [study.draw(design, random_state=rng) for _ in range(60)]
+    sizes = [len(sample) for sample in samples]
+    assert all(sample.method.endswith("+poisson") for sample in samples)
     assert len(set(sizes)) > 1
     assert abs(np.mean(sizes) - 40) < 4
+
+    hits = pd.Series(0, index=design.probabilities.index, dtype=float)
+    reps = 1500
+    for _ in range(reps):
+        hits.loc[study.draw(design, random_state=rng).items] += 1
+    pi = design.probabilities.to_numpy()
+    tolerance = 5 * np.sqrt(pi * (1 - pi) / reps) + 1 / reps
+    assert np.all(np.abs(hits.to_numpy() / reps - pi) < tolerance)
 
 
 def test_a_fixed_size_draw_needs_an_integer_budget(study) -> None:
@@ -142,3 +158,74 @@ def test_the_variance_estimator_is_reachable_through_the_study(study) -> None:
         for name in ("poisson", "hajek", "balanced")
     }
     assert widths["balanced"] < widths["hajek"] < widths["poisson"], widths
+
+
+@pytest.mark.parametrize(
+    ("fixed_size", "expected"), [(False, "poisson"), (True, "balanced")]
+)
+def test_default_variance_matches_the_draw(study, fixed_size, expected) -> None:
+    """The public workflow must carry its draw method into inference."""
+    labels = one_hot_labels(study.influence.items, classes=2, seed=46)
+    design = study.design(60)
+    assert len(design.certain) > 0
+    sample = study.draw(design, random_state=7, fixed_size=fixed_size)
+    observed = labels.loc[sample.items]
+    proxy = labels * 0.5
+    automatic = study.estimate(sample, observed, proxy=proxy, row_model_se=True)
+    explicit = study.estimate(
+        sample, observed, proxy=proxy, variance=expected, row_model_se=True
+    )
+    assert automatic.diagnostics["variance"] == expected
+    np.testing.assert_allclose(automatic.design_cov, explicit.design_cov)
+    np.testing.assert_allclose(automatic.regression_se, explicit.regression_se)
+    np.testing.assert_allclose(automatic.total_se, explicit.total_se)
+
+
+@pytest.mark.parametrize("fixed_size", [False, True])
+def test_saved_draw_restores_the_same_estimate(study, tmp_path, fixed_size) -> None:
+    """The handoff preserves selected IDs, every probability, and draw method."""
+    labels = one_hot_labels(study.influence.items, classes=2, seed=47)
+    sample = study.draw(study.design(40), random_state=8, fixed_size=fixed_size)
+    path = tmp_path / "labels_to_acquire.json"
+    sample.save(path)
+    restored = LabelSample.load(path)
+    assert restored.items.equals(sample.items)
+    np.testing.assert_array_equal(restored.probabilities, sample.probabilities)
+    assert restored.method == sample.method
+    assert restored.frame_fingerprint == study.frame_fingerprint
+    assert restored.diagnostics["random_seed"] == 8
+    direct = study.estimate(sample, labels.loc[sample.items])
+    resumed = study.estimate(restored, labels.loc[restored.items])
+    np.testing.assert_allclose(resumed.coefficients, direct.coefficients)
+    np.testing.assert_allclose(resumed.design_cov, direct.design_cov)
+
+
+def test_sample_from_different_study_is_rejected_even_with_same_ids(study) -> None:
+    """Reusing probabilities after changing the data is an invalid handoff."""
+    sample = study.draw(study.design(40), random_state=9)
+    changed = Study(study.counts, study.X.assign(extra=0.0))
+    labels = one_hot_labels(study.influence.items, classes=2, seed=48)
+    with pytest.raises(ValueError, match="not drawn from this Study frame"):
+        changed.estimate(sample, labels.loc[sample.items])
+
+
+def test_corrupt_manifest_probability_is_rejected(study, tmp_path) -> None:
+    """An invalid probability must fail when the draw is restored."""
+    sample = study.draw(study.design(40), random_state=10)
+    path = tmp_path / "draw.json"
+    sample.save(path)
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    manifest["entities"][0]["inclusion_probability"] = -0.1
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="probabilities must be finite"):
+        LabelSample.load(path)
+
+
+def test_draw_rejects_a_design_for_another_entity_frame(study) -> None:
+    """The design must cover the actual frame in its original order."""
+    from dataclasses import replace
+
+    design = study.design(40)
+    wrong = replace(design, probabilities=design.probabilities.iloc[::-1])
+    with pytest.raises(ValueError, match="cover this Study frame"):
+        study.draw(wrong, random_state=0)

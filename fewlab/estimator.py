@@ -7,18 +7,20 @@ sampler actually delivered. That is the whole reason the type exists: a ranking
 of entities by importance is not a probability sample, and no probability
 assigned to it after the fact makes it one.
 
-Two variances are reported, and they answer different questions:
+The design variance conditions on the observed rows and entity frame. An
+additional row-level regression variance assumes a model for those rows:
 
     Var(beta_hat) = sigma^2 (X'X)^-1     +     sum_j (1-pi_j)/pi_j b_j
                     fixed by your n units      fixed by your labeling budget
 
-Only the second moves when you spend more on labels. Their ratio is a stopping
-rule: once the design term is small next to the regression term, further labels
-buy almost nothing.
+Only the second moves when you spend more on labels. Their ratio can guide a
+budget decision when the row-level model is appropriate.
 """
 
+import json
 import warnings
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -33,18 +35,17 @@ class LabelSample:
 
     Attributes:
         items: The entities that were labeled.
-        probabilities: The probabilities the sampler *delivered*, over every
-            entity in the frame. These may differ from the ones a design
-            requested -- a fixed-size sampler rescales them -- and it is the
-            delivered ones that make the estimator unbiased.
+        probabilities: Inclusion probabilities over every entity in the frame.
         method: How the draw was made.
         diagnostics: Sampler detail.
+        frame_fingerprint: Identifies the study data used for the draw.
     """
 
     items: pd.Index
     probabilities: pd.Series
     method: str
     diagnostics: dict = field(default_factory=dict)
+    frame_fingerprint: str | None = None
 
     def __len__(self) -> int:
         """Number of entities labeled.
@@ -66,14 +67,111 @@ class LabelSample:
                 which would make the weight infinite and the design invalid.
         """
         pi = self.probabilities.reindex(self.items)
-        if (pi <= 0).any():
-            bad = list(pd.Index(pi.index)[(pi <= 0).to_numpy()][:5])
+        if pi.isna().any() or (pi <= 0).any():
+            bad = list(pd.Index(pi.index)[(pi.isna() | (pi <= 0)).to_numpy()][:5])
             raise ValueError(
                 f"labeled entities with zero delivered probability: {bad}. "
                 f"A sample cannot contain what the design gave no chance of "
                 f"selecting; the probabilities do not describe this draw."
             )
         return 1.0 / pi
+
+    def save(self, path: str | Path) -> None:
+        """Save the realized draw and full probability frame as JSON.
+
+        Args:
+            path: Destination manifest path. Entity identifiers must be strings.
+
+        Raises:
+            ValueError: If identifiers or probabilities cannot be represented.
+        """
+        if self.frame_fingerprint is None:
+            raise ValueError("a saved sample needs a Study frame fingerprint")
+        if not all(isinstance(item, str) for item in self.probabilities.index):
+            raise ValueError("saved sample entity identifiers must be strings")
+        if self.probabilities.index.has_duplicates or self.items.has_duplicates:
+            raise ValueError("sample entity identifiers must be unique")
+        if not self.items.isin(self.probabilities.index).all():
+            raise ValueError("sampled entities must belong to the probability frame")
+        pi = self.probabilities.to_numpy(float)
+        if not np.isfinite(pi).all() or ((pi < 0) | (pi > 1)).any():
+            raise ValueError("inclusion probabilities must be finite and in [0, 1]")
+        if (self.probabilities.reindex(self.items) <= 0).any():
+            raise ValueError("selected entities must have positive probabilities")
+        manifest = {
+            "format_version": 1,
+            "frame_fingerprint": self.frame_fingerprint,
+            "method": self.method,
+            "diagnostics": self.diagnostics,
+            "entities": [
+                {
+                    "entity_id": item,
+                    "inclusion_probability": float(probability),
+                    "selected": item in self.items,
+                }
+                for item, probability in self.probabilities.items()
+            ],
+        }
+        try:
+            payload = json.dumps(manifest, indent=2, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("sample diagnostics must be JSON serializable") from exc
+        Path(path).write_text(payload + "\n", encoding="utf-8")
+
+    @classmethod
+    def load(cls, path: str | Path) -> "LabelSample":
+        """Load a saved draw manifest.
+
+        Args:
+            path: JSON manifest written by `save`.
+
+        Returns:
+            The realized draw. `Study.estimate` checks its frame fingerprint.
+
+        Raises:
+            ValueError: If the manifest schema or contents are invalid.
+        """
+        try:
+            manifest = json.loads(Path(path).read_text(encoding="utf-8"))
+            if (
+                type(manifest["format_version"]) is not int
+                or manifest["format_version"] != 1
+            ):
+                raise ValueError("unsupported sample manifest version")
+            entities = manifest["entities"]
+            ids = [row["entity_id"] for row in entities]
+            pi = [row["inclusion_probability"] for row in entities]
+            selected = [row["selected"] for row in entities]
+            if not all(isinstance(item, str) for item in ids):
+                raise ValueError("manifest entity identifiers must be strings")
+            if not all(isinstance(flag, bool) for flag in selected):
+                raise ValueError("manifest selected values must be booleans")
+            if len(set(ids)) != len(ids):
+                raise ValueError("manifest entity identifiers must be unique")
+            probabilities = pd.Series(pi, index=pd.Index(ids), dtype=float)
+            if (
+                not np.isfinite(probabilities.to_numpy()).all()
+                or ((probabilities < 0) | (probabilities > 1)).any()
+            ):
+                raise ValueError("manifest probabilities must be finite and in [0, 1]")
+            method = manifest["method"]
+            fingerprint = manifest["frame_fingerprint"]
+            diagnostics = manifest["diagnostics"]
+            if not isinstance(method, str) or not isinstance(fingerprint, str):
+                raise ValueError("manifest method and fingerprint must be strings")
+            if not isinstance(diagnostics, dict):
+                raise ValueError("manifest diagnostics must be an object")
+        except (KeyError, TypeError, IndexError) as exc:
+            raise ValueError("invalid sample manifest") from exc
+        return cls(
+            items=pd.Index(
+                [item for item, flag in zip(ids, selected, strict=True) if flag]
+            ),
+            probabilities=probabilities,
+            method=method,
+            diagnostics=diagnostics,
+            frame_fingerprint=fingerprint,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,17 +182,17 @@ class Estimate:
         coefficients: `(p, q)` estimate of `B`, features by label class.
         design_se: Label-sampling standard errors from the chosen covariance
             estimator. The Poisson covariance estimator is design-unbiased for
-            independent draws; other designs require different estimators.
-        regression_se: Standard errors from having finitely many units, or None
-            when the inputs needed to compute them were not supplied.
-        total_se: The two components combined in quadrature, or None.
+            independent draws; other designs require different estimators. An
+            empty draw has no variance estimate and reports NaN.
+        regression_se: Optional model-based standard errors for sampling rows.
+        total_se: Design and model components combined in quadrature, or None.
         fitted: `(n, q)` estimated unit-level shares `Yhat`.
         design_cov: Full `(pq, pq)` design covariance of `vec(B)`.
         bias_bound: Worst-case Frobenius norm of the bias, zero when unshrunk.
         bias_estimate: Proxy-based point estimate of the bias, when a proxy was
             given and shrinkage applied.
-        diagnostics: Includes `variance_ratio`, the share of total variance the
-            labeling budget is responsible for.
+        diagnostics: Includes the selected variance estimator, its status, and
+            `variance_ratio` when row-level model uncertainty is requested.
     """
 
     coefficients: pd.DataFrame
@@ -108,20 +206,18 @@ class Estimate:
     diagnostics: dict = field(default_factory=dict)
 
     def summary(self) -> pd.DataFrame:
-        """Tabulate the estimate against its uncertainty.
+        """Tabulate the estimate against its design uncertainty.
 
         Returns:
             One row per feature and label class, with the coefficient, each
-            standard error component, and the t-statistic against the total.
+            standard error component, and the statistic against the design SE.
+            `total_se` also appears when row-level model uncertainty is
+            available, but it is not the finite-frame design SE.
         """
         rows = []
         for feature in self.coefficients.index:
             for cls in self.coefficients.columns:
-                total = (
-                    self.total_se.loc[feature, cls]
-                    if self.total_se is not None
-                    else self.design_se.loc[feature, cls]
-                )
+                design = self.design_se.loc[feature, cls]
                 rows.append(
                     {
                         "feature": feature,
@@ -133,9 +229,15 @@ class Estimate:
                             if self.regression_se is not None
                             else np.nan
                         ),
-                        "total_se": total,
-                        "t": self.coefficients.loc[feature, cls] / total
-                        if total > 0
+                        "total_se": (
+                            self.total_se.loc[feature, cls]
+                            if self.total_se is not None
+                            else np.nan
+                        ),
+                        "variance_method": self.diagnostics["variance"],
+                        "variance_status": self.diagnostics["variance_status"],
+                        "t": self.coefficients.loc[feature, cls] / design
+                        if design > 0
                         else np.nan,
                     }
                 )
@@ -168,7 +270,85 @@ def _as_frame(labels: pd.Series | pd.DataFrame, items: pd.Index) -> pd.DataFrame
     return aligned.astype(float)
 
 
-VARIANCES = ("poisson", "hajek", "balanced")
+VARIANCES = ("auto", "poisson", "hajek", "balanced")
+
+
+def _resolve_variance(sample: LabelSample, variance: str) -> str:
+    """Match the default variance estimator to the recorded sampling method.
+
+    Args:
+        sample: Realized sample with its sampling method.
+        variance: Requested estimator or `"auto"`.
+
+    Returns:
+        Name of the estimator to compute.
+
+    Raises:
+        ValueError: If the estimator or recorded sampling method is unknown.
+    """
+    if variance != "auto":
+        if variance not in VARIANCES:
+            raise ValueError(f"variance must be one of {VARIANCES}, got {variance!r}")
+        return variance
+    if sample.method.endswith("+poisson"):
+        return "poisson"
+    if sample.method.endswith("+cube"):
+        return "balanced"
+    raise ValueError(
+        f"cannot choose a variance estimator for sample method {sample.method!r}; "
+        "pass variance explicitly"
+    )
+
+
+def _design_residuals(
+    contributions: np.ndarray,
+    pi_s: np.ndarray,
+    variance: str,
+    auxiliaries: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return sample residuals and weights for a design variance calculation.
+
+    Args:
+        contributions: Sample contributions, one row per entity.
+        pi_s: Delivered probabilities for sampled entities.
+        variance: Resolved variance estimator.
+        auxiliaries: Balancing variables for the cube estimator.
+
+    Returns:
+        Residual contributions and their nonnegative variance weights.
+
+    Raises:
+        ValueError: If the estimator is unknown or needs missing auxiliaries.
+    """
+    k = contributions.shape[0]
+    base = 1.0 - pi_s
+    if variance == "poisson":
+        return contributions, base
+    if variance not in ("hajek", "balanced"):
+        raise ValueError(f"variance must be one of {VARIANCES}, got {variance!r}")
+    if base.sum() <= 0:
+        return np.zeros_like(contributions), base
+    if variance == "hajek":
+        design = np.ones((k, 1))
+    else:
+        if auxiliaries is None:
+            raise ValueError(
+                'variance="balanced" needs the balancing auxiliaries the '
+                "sampler used; draw the sample with fixed_size=True"
+            )
+        design = np.c_[np.ones(k), auxiliaries]
+
+    root = np.sqrt(base)[:, None]
+    whitened = design * root
+    if np.linalg.matrix_rank(whitened) >= np.count_nonzero(base > 0):
+        return np.full_like(contributions, np.nan), base
+    pinv = np.linalg.pinv(whitened.T @ whitened)
+    coef = pinv @ (whitened.T @ (contributions * root))
+    residual = contributions - design @ coef
+    leverage = np.clip(
+        np.einsum("ki,ij,kj->k", whitened, pinv, whitened), 0.0, 1 - 1e-9
+    )
+    return residual, base / (1.0 - leverage)
 
 
 def _design_covariance(
@@ -208,54 +388,9 @@ def _design_covariance(
     Returns:
         The `(pq, pq)` estimated covariance.
 
-    Raises:
-        ValueError: If `variance` is unrecognized, or `"balanced"` is asked for
-            without auxiliaries.
     """
-    k, d = contributions.shape
-    if variance == "poisson":
-        return (contributions * (1.0 - pi_s)[:, None]).T @ contributions
-    if variance not in ("hajek", "balanced"):
-        raise ValueError(f"variance must be one of {VARIANCES}, got {variance!r}")
-    if k < 2:
-        return np.zeros((d, d))
-
-    # Both estimators are the same construction with a different set of things
-    # held fixed: Hajek fixes only the sample size, so it regresses on a
-    # constant; the balanced form also fixes the auxiliary totals, so it
-    # regresses on those too. What is left over after removing what the design
-    # could not have varied is what the variance is made of.
-    if variance == "hajek":
-        design = np.ones((k, 1))
-    else:
-        if auxiliaries is None:
-            raise ValueError(
-                'variance="balanced" needs the balancing auxiliaries the '
-                "sampler used; draw the sample with fixed_size=True"
-            )
-        design = np.c_[np.ones(k), auxiliaries]
-
-    base = 1.0 - pi_s
-    if base.sum() <= 0:
-        return np.zeros((d, d))
-    root = np.sqrt(base)[:, None]
-    whitened = design * root
-    pinv = np.linalg.pinv(whitened.T @ whitened)
-    coef = pinv @ (whitened.T @ (contributions * root))
-    residual = contributions - design @ coef
-
-    # Fitting the regression consumes degrees of freedom, and a single scalar
-    # correction such as k/(k-q) only accounts for that when the residuals are
-    # homoskedastic. Here the weights span orders of magnitude, so leverage does
-    # too, and each residual has to be inflated by its own. Certainty entities
-    # carry weight zero and no leverage, which is correct: they could not have
-    # been anywhere else.
-    leverage = np.clip(
-        np.einsum("ki,ij,kj->k", whitened, pinv, whitened), 0.0, 1 - 1e-9
-    )
-    weights = base / (1.0 - leverage)
-    centered = residual
-    return (centered * weights[:, None]).T @ centered
+    residual, weights = _design_residuals(contributions, pi_s, variance, auxiliaries)
+    return (residual * weights[:, None]).T @ residual
 
 
 def estimate(
@@ -267,7 +402,8 @@ def estimate(
     X: pd.DataFrame | None = None,
     proxy: pd.DataFrame | None = None,
     alpha: pd.Series | float = 1.0,
-    variance: str = "poisson",
+    variance: str = "auto",
+    row_model_se: bool = False,
 ) -> Estimate:
     """Estimate `B` from a realized label sample.
 
@@ -302,12 +438,11 @@ def estimate(
         alpha: Shrinkage applied to the sampled correction. The default of 1.0
             is the unbiased estimator. See `trim_alpha` before departing from
             it.
-        variance: Which variance estimator to use. `"poisson"` is exact for an
-            independent Bernoulli draw; it has no universal conservatism
-            guarantee for other designs. `"hajek"` accounts for a fixed sample size,
-            and `"balanced"` also accounts for the auxiliaries a cube draw held
-            fixed; use them only when the sample was drawn that way, since on a
-            Poisson draw they understate.
+        variance: `"auto"` chooses `"poisson"` for independent draws and
+            `"balanced"` for cube draws. The former is design-unbiased; the
+            latter is an approximation. Explicit estimators are available for
+            comparison; the fixed-size estimators understate a Poisson draw.
+        row_model_se: Compute the optional homoskedastic row-level model SE.
 
     Returns:
         The estimate, its two variance components, and any bias incurred.
@@ -332,6 +467,13 @@ def estimate(
     """
     items = pd.Index(infl.items)
     sampled = pd.Index(sample.items)
+    if items.has_duplicates or sampled.has_duplicates:
+        raise ValueError("frame and sampled entity identifiers must be unique")
+    if not sample.probabilities.index.equals(items):
+        raise ValueError("sample probabilities must cover the influence frame in order")
+    pi_all = sample.probabilities.to_numpy(float)
+    if not np.isfinite(pi_all).all() or ((pi_all < 0) | (pi_all > 1)).any():
+        raise ValueError("inclusion probabilities must be finite and in [0, 1]")
     pos = items.get_indexer(sampled)
     if (pos < 0).any():
         raise ValueError("sample contains entities absent from the influence frame")
@@ -341,7 +483,7 @@ def estimate(
     q = len(classes)
 
     pi_s = sample.probabilities.reindex(sampled).to_numpy(float)
-    if (pi_s <= 0).any():
+    if not np.isfinite(pi_s).all() or (pi_s <= 0).any():
         raise ValueError(
             "sampled entities with zero delivered probability; the reported "
             "design does not describe this draw"
@@ -380,26 +522,45 @@ def estimate(
     corr_w = alpha_s / pi_s
     B_hat = baseline + H_s @ (D_s * corr_w[:, None])
 
-    # Design covariance of vec(B), columns stacked: sum_j v_j (d_j d_j') kron
-    # (h_j h_j') with v_j = alpha_j^2 (1-pi_j)/pi_j^2, the unbiased sample
-    # estimator of alpha_j^2 (1-pi_j)/pi_j.
-    var_w = alpha_s**2 * (1.0 - pi_s) / pi_s**2
-    # Row k is vec(h_j d_j') / pi_j, the entity's contribution to the estimator,
-    # with columns stacked to match vec(B).
-    contributions = np.einsum("pk,kq->kqp", H_s, D_s).reshape(len(sampled), -1)
-    contributions = contributions / pi_s[:, None] * alpha_s[:, None]
-    auxiliaries = (infl.G[:, pos] / pi_s[None, :]).T
-    design_cov = _design_covariance(contributions, pi_s, variance, auxiliaries)
-    design_var = np.clip(np.diag(design_cov), 0.0, None).reshape(q, infl.n_features).T
-
     features = (
         pd.Index(X.columns) if X is not None else pd.Index(range(infl.n_features))
     )
     coefficients = pd.DataFrame(B_hat, index=features, columns=classes)
+    selected_variance = _resolve_variance(sample, variance)
+    auxiliaries = (infl.G[:, pos] / pi_s[None, :]).T
+
+    if len(sampled) == 0:
+        # The empty set is a possible Poisson realization. Its HT correction is
+        # zero, but it contains no information with which to estimate variance.
+        design_cov = np.full((infl.n_features * q, infl.n_features * q), np.nan)
+        design_var = np.full((infl.n_features, q), np.nan)
+    else:
+        # Row k is vec(h_j d_j') / pi_j, the entity's contribution to the
+        # estimator, with columns stacked to match vec(B).
+        contributions = np.einsum("pk,kq->kqp", H_s, D_s).reshape(len(sampled), -1)
+        contributions = contributions / pi_s[:, None] * alpha_s[:, None]
+        design_cov = _design_covariance(
+            contributions, pi_s, selected_variance, auxiliaries
+        )
+        design_var = (
+            np.clip(np.diag(design_cov), 0.0, None).reshape(q, infl.n_features).T
+        )
+
     design_se = pd.DataFrame(np.sqrt(design_var), index=features, columns=classes)
 
     fitted, regression_se, total_se, ratio = _regression_component(
-        infl, counts, X, pos, D_s, M_arr, corr_w, var_w, classes, design_var
+        counts,
+        X,
+        pos,
+        D_s,
+        M_arr,
+        corr_w,
+        pi_s,
+        selected_variance,
+        auxiliaries,
+        classes,
+        design_var,
+        row_model_se,
     )
 
     bias_bound, bias_estimate = _bias_terms(
@@ -418,46 +579,62 @@ def estimate(
         diagnostics={
             "n_labeled": len(sampled),
             "n_frame": infl.n_items,
-            "max_weight": float(np.max(1.0 / pi_s)),
+            "max_weight": float(np.max(1.0 / pi_s)) if len(sampled) else 0.0,
             "proxy": proxy is not None,
+            "variance": selected_variance,
+            "variance_status": (
+                "unavailable"
+                if not np.isfinite(design_var).all()
+                else "design-unbiased variance"
+                if (
+                    selected_variance == "poisson"
+                    and sample.method.endswith("+poisson")
+                    and np.all(alpha_all == 1.0)
+                )
+                else "approximate"
+            ),
             "variance_ratio": ratio,
-            "unbiased": bool(np.allclose(alpha_all, 1.0)),
+            "unbiased": bool(np.all(alpha_all == 1.0)),
         },
     )
 
 
 def _regression_component(
-    infl: Influence,
     counts: pd.DataFrame | CountMatrix | None,
     X: pd.DataFrame | None,
     pos: np.ndarray,
     D_s: np.ndarray,
     M_arr: np.ndarray | None,
     corr_w: np.ndarray,
-    var_w: np.ndarray,
+    pi_s: np.ndarray,
+    variance: str,
+    auxiliaries: np.ndarray,
     classes: pd.Index,
     design_var: np.ndarray,
+    row_model_se: bool,
 ) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None, float | None]:
-    """Compute fitted values and the finite-unit variance component.
+    """Compute fitted values and the row-level model variance component.
 
     The residuals of `Yhat` on `X` carry design noise as well as genuine
     regression error, so the naive residual variance overstates `sigma^2`. The
-    design noise contributes `sum_j (1-pi_j)/pi_j d_jq^2 (v_j' M_X v_j)` to the
-    residual sum of squares, where `M_X` is the residual maker, and
-    `v_j' M_X v_j = ||v_j||^2 - h_j' (X'X) h_j`. Subtracting it leaves an
-    estimator of `sigma^2` that is unbiased rather than inflated.
+    design noise contributes the design variance of `M_X Yhat` to the residual
+    sum of squares, where `M_X` is the residual maker. The variance calculation
+    must use the same estimator as the coefficient design variance. Under an
+    independent draw this is unbiased; under a cube draw it is approximate.
 
     Args:
-        infl: Influence decomposition.
         counts: Count matrix, or None to skip.
         X: Feature matrix, or None to skip the regression component.
         pos: Positions of the labeled entities in the frame.
         D_s: Label residuals for the labeled entities.
         M_arr: Proxy predictions for the frame, or None.
         corr_w: Weights `alpha_j / pi_j` for the correction term.
-        var_w: Variance weights `alpha_j^2 (1-pi_j)/pi_j^2`.
+        pi_s: Delivered inclusion probabilities of sampled entities.
+        variance: Selected design variance estimator.
+        auxiliaries: Balancing variables for a cube draw.
         classes: Label class names.
         design_var: Per-coefficient design variances.
+        row_model_se: Whether to compute the row-level model component.
 
     Returns:
         Fitted values, regression standard errors, total standard errors, and
@@ -484,7 +661,12 @@ def _regression_component(
         Y_hat = Y_hat + _proxy_baseline(C, T, M_arr)
     fitted = pd.DataFrame(Y_hat, index=C.index, columns=classes)
 
-    if X is None:
+    if (
+        not row_model_se
+        or X is None
+        or pos.size == 0
+        or not np.isfinite(design_var).all()
+    ):
         return fitted, None, None, None
 
     Xn = X.reindex(C.index).to_numpy(float)
@@ -495,13 +677,16 @@ def _regression_component(
     resid = Y_hat - Xn @ np.linalg.lstsq(Xn, Y_hat, rcond=None)[0]
     rss = np.einsum("nq,nq->q", resid, resid)
 
-    # Design noise already sitting inside that RSS, removed so sigma^2 is not
-    # double-counted against the design variance reported separately.
-    v_norm2 = np.einsum("nk,nk->k", V_s, V_s)
-    h_s = infl.H[:, pos]
-    proj = np.einsum("pk,pk->k", h_s, infl.XtX @ h_s)
-    leverage = np.maximum(v_norm2 - proj, 0.0)
-    inflation = np.einsum("k,kq,k->q", var_w, D_s**2, leverage)
+    # Estimate the variance of M_X Yhat from the same entity draw. A trace is
+    # enough here; materializing its n-by-n covariance would waste memory.
+    residual_shares = V_s - Xn @ np.linalg.lstsq(Xn, V_s, rcond=None)[0]
+    inflation = np.empty(q)
+    for column in range(q):
+        row_contributions = (residual_shares * (D_s[:, column] * corr_w)[None, :]).T
+        residuals, weights = _design_residuals(
+            row_contributions, pi_s, variance, auxiliaries
+        )
+        inflation[column] = np.einsum("kn,k,kn->", residuals, weights, residuals)
 
     sigma2 = np.clip((rss - inflation) / (n - p), 0.0, None)
     if np.any(rss - inflation < 0):
@@ -597,7 +782,8 @@ def trim_alpha(sample: LabelSample, weight_cap: float) -> pd.Series:
     """
     if weight_cap <= 0:
         raise ValueError(f"weight_cap must be positive, got {weight_cap}")
-    return np.minimum(1.0, weight_cap * sample.probabilities).rename("alpha")
+    factors = np.minimum(1.0, weight_cap * sample.probabilities.to_numpy(float))
+    return pd.Series(factors, index=sample.probabilities.index, name="alpha")
 
 
 def _proxy_baseline(C: CountMatrix, T: np.ndarray, M_arr: np.ndarray) -> np.ndarray:

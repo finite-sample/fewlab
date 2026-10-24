@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-10-24
+
+This release changes the defaults for drawing and inference. Existing callers
+that require an exact label count should pass `fixed_size=True`. Callers that
+use `regression_se`, `total_se`, or `variance_ratio` should pass
+`row_model_se=True` and check that a row-level model fits their question.
+
+### Added
+
+- `LabelSample.save()` and `LabelSample.load()` persist the realized draw as a
+  JSON manifest with the full probability frame, selected entity IDs, method,
+  available seed, and a fingerprint of the study data. `Study.estimate()` and
+  `Study.calibrate()` reject draws from a different study frame.
+- `Estimate.summary()` identifies the variance method and whether its variance
+  estimator is design-unbiased, approximate, or unavailable.
+
+### Changed
+
+- `Study.draw()` now draws entities independently by default, so `budget` is an
+  expected label count. Pass `fixed_size=True` to retain an exact count with
+  cube sampling.
+- `Study.estimate()` and `estimate()` now select the variance estimator from the
+  recorded draw method by default: design-unbiased Poisson variance for
+  independent draws and a balanced residual approximation for cube draws.
+  `Estimate.summary()` uses the finite-frame design SE for its statistic;
+  row-level model and combined SEs remain separate.
+- An independent draw containing no labels retains its point estimate and
+  reports unavailable design uncertainty instead of crashing.
+- Row-level model standard errors are computed only when `row_model_se=True` is
+  passed to `Study.estimate()` or `estimate()`.
+
 ## [3.0.0] - 2026-10-13
 
 The estimand has an exact finite-population identity that the package was

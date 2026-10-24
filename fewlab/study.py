@@ -17,6 +17,7 @@ result was a workflow the documentation called Horvitz-Thompson while it was
 neither unbiased nor design-based.
 """
 
+import hashlib
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -36,6 +37,44 @@ from .designs import (
 from .estimator import Estimate, LabelSample, estimate
 from .influence import Influence, contribution_scores, direction_spectrum, influence
 from .utils import _get_random_generator
+
+
+def _frame_fingerprint(counts: CountMatrix, X: pd.DataFrame, infl: Influence) -> str:
+    """Identify the ordered data and influence decomposition behind a draw."""
+    digest = hashlib.sha256()
+    unit_order = sorted(
+        range(len(counts.index)),
+        key=lambda i: (type(counts.index[i]).__name__, repr(counts.index[i])),
+    )
+    canonical_units = counts.index[unit_order]
+    metadata = (
+        list(canonical_units),
+        list(counts.columns),
+        list(X.columns),
+        list(infl.items),
+        infl.ridge,
+    )
+    digest.update(repr(metadata).encode("utf-8"))
+    row_positions = np.empty(len(unit_order), dtype=int)
+    row_positions[unit_order] = np.arange(len(unit_order))
+    canonical_rows = row_positions[counts.rows]
+    order = np.lexsort((counts.cols, canonical_rows))
+    rows = canonical_rows[order]
+    cols = counts.cols[order]
+    starts = np.r_[True, (np.diff(rows) != 0) | (np.diff(cols) != 0)]
+    positions = np.flatnonzero(starts)
+    values = np.add.reduceat(counts.values[order], positions)
+    nonzero = values != 0
+    for part in (
+        rows[positions][nonzero],
+        cols[positions][nonzero],
+        values[nonzero],
+        X.reindex(canonical_units).to_numpy(float),
+    ):
+        array = np.ascontiguousarray(part, dtype="<f8")
+        digest.update(repr(array.shape).encode("ascii"))
+        digest.update(array.tobytes())
+    return digest.hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +145,7 @@ class Study:
     X: pd.DataFrame
     influence: Influence
     diagnostics: dict = field(default_factory=dict)
+    frame_fingerprint: str = ""
 
     def __init__(
         self,
@@ -132,6 +172,9 @@ class Study:
         object.__setattr__(self, "counts", counts)
         object.__setattr__(self, "X", X)
         object.__setattr__(self, "influence", infl)
+        object.__setattr__(
+            self, "frame_fingerprint", _frame_fingerprint(counts, X, infl)
+        )
         object.__setattr__(
             self,
             "diagnostics",
@@ -283,7 +326,7 @@ class Study:
     ) -> LabelDesign:
         """Buy the least expected cost for a label-sampling risk ceiling.
 
-        Use independent draws via `draw(design, fixed_size=False)`. A single
+        Use the default independent draw via `draw(design)`. A single
         contrast uses a variance ceiling (SE squared); the default coefficient
         loss bounds the sum of coefficient variances. With unit label norms,
         risk is exact for a one-hot taxonomy and bounds an unknown binary label.
@@ -307,17 +350,17 @@ class Study:
         design: LabelDesign,
         *,
         random_state: int | np.random.Generator | None = None,
-        fixed_size: bool = True,
+        fixed_size: bool = False,
     ) -> LabelSample:
         """Realize a design into an actual set of entities to label.
 
         Args:
             design: The probability design to realize.
             random_state: Seed or generator.
-            fixed_size: Draw exactly `budget` entities using the cube method,
-                balancing on the influence projections so the sample reproduces
-                their population totals. False draws independent Bernoulli
-                trials, giving a random sample size but the simplest variance.
+            fixed_size: False draws independent Bernoulli trials, giving an
+                expected rather than exact sample size and a design-unbiased
+                variance estimator. True draws exactly `budget` entities with
+                the cube method, balancing on the influence projections.
 
         Returns:
             The realized sample, carrying the delivered probabilities.
@@ -328,14 +371,26 @@ class Study:
         rng = _get_random_generator(random_state)
         pi = design.probabilities
         items = pd.Index(pi.index)
+        frame = pd.Index(self.influence.items)
+        if not items.equals(frame) or items.has_duplicates:
+            raise ValueError(
+                "design probabilities must cover this Study frame in order"
+            )
+        values = pi.to_numpy(float)
+        if not np.isfinite(values).all() or ((values < 0) | (values > 1)).any():
+            raise ValueError("design probabilities must be finite and in [0, 1]")
+        provenance = (
+            {"random_seed": random_state} if isinstance(random_state, int) else {}
+        )
 
         if not fixed_size:
-            drawn = rng.random(pi.size) < pi.to_numpy(float)
+            drawn = rng.random(pi.size) < values
             return LabelSample(
                 items=items[drawn],
                 probabilities=pi,
                 method=f"{design.method}+poisson",
-                diagnostics={"expected_size": design.budget},
+                diagnostics={"expected_size": design.budget, **provenance},
+                frame_fingerprint=self.frame_fingerprint,
             )
 
         size = design.budget
@@ -345,8 +400,8 @@ class Study:
                 f"fixed_size=False for a Poisson draw."
             )
 
-        active = pi.to_numpy(float) > 0
-        pi_active = pi.to_numpy(float)[active]
+        active = values > 0
+        pi_active = values[active]
         G_active = self.influence.G[:, active]
         constraints = np.vstack(
             [G_active / np.maximum(pi_active, 1e-18)[None, :], np.ones(pi_active.size)]
@@ -357,7 +412,12 @@ class Study:
             items=chosen,
             probabilities=pi,
             method=f"{design.method}+cube",
-            diagnostics={"balanced_on": "G", "target_size": round(size)},
+            diagnostics={
+                "balanced_on": "G",
+                "target_size": round(size),
+                **provenance,
+            },
+            frame_fingerprint=self.frame_fingerprint,
         )
 
     def calibrate(self, sample: LabelSample) -> pd.Series:
@@ -388,6 +448,7 @@ class Study:
             Shrinkage factors indexed by the sampled entities, to pass as
             `alpha` to `estimate`.
         """
+        self._check_sample_frame(sample)
         pi = sample.probabilities
         weights = calibrate_weights(pi, self.influence.G, sample.items)
         return (weights * pi.reindex(sample.items)).rename("alpha")
@@ -399,7 +460,8 @@ class Study:
         *,
         proxy: pd.DataFrame | None = None,
         alpha: pd.Series | float = 1.0,
-        variance: str = "poisson",
+        variance: str = "auto",
+        row_model_se: bool = False,
     ) -> Estimate:
         """Estimate `B` from a realized sample.
 
@@ -412,13 +474,14 @@ class Study:
             proxy: Optional cheap prediction for every entity, enabling the
                 difference estimator.
             alpha: Shrinkage on the sampled correction; 1.0 is unbiased.
-            variance: Which variance estimator to use. The default is exact for
-                a Poisson draw, with no universal bound for other designs.
-                Pass `"balanced"` after a cube draw to account for the
-                auxiliaries used in balancing.
+            variance: `"auto"` matches the estimator to the draw: design-unbiased
+                `"poisson"` for independent draws and approximate `"balanced"`
+                for cube draws. Explicit choices are available for comparisons.
+            row_model_se: Also compute the homoskedastic row-level model SE.
+                False keeps inference conditional on the observed rows.
 
         Returns:
-            The estimate with both variance components.
+            The estimate and design uncertainty, with model uncertainty if asked.
 
         Raises:
             TypeError: If handed a `Ranking` or a bare list of entities.
@@ -436,6 +499,7 @@ class Study:
                 f"bare set of entities does not say whether it came from top-B, "
                 f"a random draw, or a hand edit, and the weights differ."
             )
+        self._check_sample_frame(sample)
         return estimate(
             self.influence,
             sample,
@@ -445,7 +509,16 @@ class Study:
             proxy=proxy,
             alpha=alpha,
             variance=variance,
+            row_model_se=row_model_se,
         )
+
+    def _check_sample_frame(self, sample: LabelSample) -> None:
+        """Reject a draw made for different counts, features, or entity frame."""
+        if sample.frame_fingerprint != self.frame_fingerprint:
+            raise ValueError(
+                "sample was not drawn from this Study frame; use the same "
+                "counts and features used to draw it"
+            )
 
     def __repr__(self) -> str:
         """Summarize the study.

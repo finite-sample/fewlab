@@ -8,6 +8,8 @@ anything shows up as a passing falsification test rather than as silence.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -137,7 +139,9 @@ def test_a_fixed_size_draw_is_covered_conservatively(population) -> None:
     values, ses = [], []
     for _ in range(400):
         sample = study.draw(design, random_state=rng, fixed_size=True)
-        est = estimate(study.influence, sample, labels.loc[sample.items])
+        est = estimate(
+            study.influence, sample, labels.loc[sample.items], variance="poisson"
+        )
         values.append(float(est.coefficients.iloc[1, 0]))
         ses.append(float(est.design_se.iloc[1, 0]))
     spread = float(np.std(values, ddof=1))
@@ -262,13 +266,119 @@ def test_both_variance_components_are_reported(population) -> None:
     """The budget moves one of them and not the other; say which."""
     study, labels, _ = population
     sample = study.draw(study.design(BUDGET), random_state=15, fixed_size=False)
-    est = study.estimate(sample, labels.loc[sample.items])
+    est = study.estimate(sample, labels.loc[sample.items], row_model_se=True)
     assert est.regression_se is not None
     assert est.total_se is not None
     total = est.total_se.to_numpy()
     assert np.all(total >= est.design_se.to_numpy() - 1e-12)
     assert np.all(total >= est.regression_se.to_numpy() - 1e-12)
     assert 0.0 <= est.diagnostics["variance_ratio"] <= 1.0
+
+
+def test_summary_uses_design_uncertainty_for_the_finite_frame(population) -> None:
+    """The default test statistic must condition on the observed row frame."""
+    study, labels, _ = population
+    sample = study.draw(study.design(BUDGET), random_state=15)
+    est = study.estimate(sample, labels.loc[sample.items])
+    row = est.summary().iloc[0]
+    assert row["t"] == pytest.approx(row["coefficient"] / row["design_se"])
+    assert pd.isna(row["total_se"])
+    assert row["variance_method"] == "poisson"
+    assert row["variance_status"] == "design-unbiased variance"
+
+
+def test_shrinkage_does_not_claim_unbiased_variance(population) -> None:
+    """A changed correction weight needs a qualified variance label."""
+    study, labels, _ = population
+    sample = study.draw(study.design(BUDGET), random_state=15)
+    est = study.estimate(sample, labels.loc[sample.items], alpha=0.9)
+    assert est.summary().iloc[0]["variance_status"] == "approximate"
+    assert not est.diagnostics["unbiased"]
+
+
+def test_an_empty_poisson_draw_keeps_the_point_estimate_but_has_no_se(
+    population,
+) -> None:
+    """A zero-label draw is possible even when every entity has positive pi."""
+    study, labels, _ = population
+    sample = study.draw(study.design(0.1), random_state=0)
+    assert len(sample) == 0
+    observed = labels.loc[sample.items]
+    plain = study.estimate(sample, observed)
+    np.testing.assert_array_equal(plain.coefficients.to_numpy(), 0.0)
+    assert plain.design_se.isna().all().all()
+    assert plain.regression_se is None
+    assert plain.diagnostics["variance_ratio"] is None
+
+    proxy = labels * 0.5
+    with_proxy = study.estimate(sample, observed, proxy=proxy)
+    np.testing.assert_allclose(
+        with_proxy.coefficients.to_numpy(),
+        study.influence.H @ proxy.to_numpy(),
+    )
+    assert with_proxy.design_se.isna().all().all()
+
+
+def test_a_saturated_cube_draw_does_not_report_zero_uncertainty(population) -> None:
+    """One random label cannot identify a balanced residual variance."""
+    study, labels, _ = population
+    sample = study.draw(study.design(1), random_state=0, fixed_size=True)
+    assert len(sample) == 1
+    assert sample.probabilities.loc[sample.items[0]] < 1
+    est = study.estimate(sample, labels.loc[sample.items], row_model_se=True)
+    assert est.design_se.isna().all().all()
+    assert est.regression_se is None
+    assert np.isfinite(est.coefficients.to_numpy()).all()
+
+
+def test_auto_variance_requires_a_recorded_draw_method(population) -> None:
+    """A caller-made sample must name its design before getting an automatic SE."""
+    study, labels, _ = population
+    sample = study.draw(study.design(BUDGET), random_state=17)
+    unknown = replace(sample, method="unknown")
+    with pytest.raises(ValueError, match="cannot choose a variance estimator"):
+        estimate(study.influence, unknown, labels.loc[sample.items])
+
+
+def test_poisson_row_model_correction_matches_the_design_formula(population) -> None:
+    """The optional model SE must subtract the published Poisson noise term."""
+    study, labels, _ = population
+    sample = study.draw(study.design(90), random_state=2)
+    est = study.estimate(sample, labels.loc[sample.items], row_model_se=True)
+    items = pd.Index(study.influence.items)
+    pos = items.get_indexer(sample.items)
+    counts = study.counts
+    totals = counts.row_totals()
+    shares = counts.dense_columns(pos) / totals[:, None]
+    X = study.X.to_numpy(float)
+    residual_shares = shares - X @ np.linalg.lstsq(X, shares, rcond=None)[0]
+    pi = sample.probabilities.reindex(sample.items).to_numpy(float)
+    observed = labels.loc[sample.items].to_numpy(float)
+    noise = np.sum(
+        (1 - pi)[:, None]
+        / pi[:, None] ** 2
+        * observed**2
+        * np.sum(residual_shares**2, axis=0)[:, None],
+        axis=0,
+    )
+    fitted = est.fitted.to_numpy()
+    residual = fitted - X @ np.linalg.lstsq(X, fitted, rcond=None)[0]
+    sigma2 = np.maximum(
+        0, (np.sum(residual**2, axis=0) - noise) / (len(X) - X.shape[1])
+    )
+    expected = np.sqrt(np.diag(np.linalg.pinv(X.T @ X))[:, None] * sigma2[None, :])
+    np.testing.assert_allclose(est.regression_se.to_numpy(), expected)
+
+
+def test_cube_row_model_correction_changes_with_variance_estimator(population) -> None:
+    """The combined SE must use the same design approximation as design_se."""
+    study, labels, _ = population
+    sample = study.draw(study.design(BUDGET), random_state=2, fixed_size=True)
+    observed = labels.loc[sample.items]
+    balanced = study.estimate(sample, observed, row_model_se=True)
+    poisson = study.estimate(sample, observed, variance="poisson", row_model_se=True)
+    assert balanced.diagnostics["variance"] == "balanced"
+    assert not np.allclose(balanced.regression_se, poisson.regression_se)
 
 
 # At small budgets some draws legitimately trip the advisory that design noise
@@ -280,7 +390,7 @@ def test_spending_more_shrinks_only_the_design_component(population) -> None:
     ratios = []
     for budget in (20, 60, 110):
         sample = study.draw(study.design(budget), random_state=16, fixed_size=False)
-        est = study.estimate(sample, labels.loc[sample.items])
+        est = study.estimate(sample, labels.loc[sample.items], row_model_se=True)
         ratios.append(est.diagnostics["variance_ratio"])
     assert ratios[0] > ratios[-1], (
         f"design share of variance did not fall with budget: {ratios}"

@@ -42,12 +42,12 @@ it.
    >>> panel.influence.n_items
    500
 
-Labeling 60 of the 500 sites, chosen by influence:
+For an exact budget, label 60 of the 500 sites using a cube draw:
 
 .. doctest::
 
    >>> design = panel.design(budget=60)
-   >>> sample = panel.draw(design, random_state=3)
+   >>> sample = panel.draw(design, random_state=3, fixed_size=True)
    >>> len(sample), len(design.certain) > 0
    (60, True)
 
