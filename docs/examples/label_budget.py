@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["fewlab>=3.0", "marimo", "numpy", "pandas"]
+# dependencies = ["fewlab>=4.0", "marimo", "numpy", "pandas"]
 # ///
 """Which websites should you pay to label? A marimo notebook."""
 
