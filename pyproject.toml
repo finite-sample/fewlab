@@ -47,9 +47,9 @@ dev = [
 test = [
     "pytest>=8",
     "pytest-cov>=6",
-    # A git reference, so it stays in dependency-groups and out of the published
-    # extras: PyPI rejects direct URL references in project metadata.
-    "simcheck @ git+https://github.com/finite-sample/simcheck",
+    # The Monte Carlo helper uses the Git source below; PyPI simcheck is
+    # an unrelated robotics package.
+    "simcheck",
 ]
 docs = [
     "sphinx>=8",
@@ -163,3 +163,6 @@ pep621_dev_dependency_groups = ["dev", "test", "docs"]
 
 [tool.codespell]
 builtin = "clear,rare,en-GB_to_en-US"
+
+[tool.uv.sources]
+simcheck = { git = "https://github.com/finite-sample/simcheck" }
