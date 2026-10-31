@@ -1,4 +1,4 @@
-# fewlab
+# fewlab: buy the labels that buy the smallest standard error
 
 [![Python application](https://github.com/finite-sample/fewlab/actions/workflows/ci.yml/badge.svg)](https://github.com/finite-sample/fewlab/actions/workflows/ci.yml)
 [![Documentation](https://img.shields.io/badge/docs-github.io-blue)](https://finite-sample.github.io/fewlab/)
