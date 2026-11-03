@@ -142,7 +142,7 @@ def validate_features_matrix(X: Any, name: str = "X") -> pd.DataFrame:
         )
 
     # Check for constant columns
-    constant_cols = [col for col in X.columns if X[col].nunique() <= 1]
+    constant_cols = X.columns[X.nunique().to_numpy() <= 1].tolist()
 
     if constant_cols:
         warnings.warn(

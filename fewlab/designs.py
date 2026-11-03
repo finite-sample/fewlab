@@ -60,7 +60,7 @@ class LabelDesign:
         Returns:
             Index of the certainty core.
         """
-        return pd.Index(self.probabilities.index[self.probabilities >= CERTAINTY])
+        return self.probabilities.index[(self.probabilities >= CERTAINTY).to_numpy()]
 
 
 def design_risk(scores: pd.Series | np.ndarray, pi: pd.Series | np.ndarray) -> float:
