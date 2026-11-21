@@ -162,3 +162,23 @@ def test_gls_rejects_an_aliased_feature(setup) -> None:
     X = study.X.assign(duplicate=study.X.iloc[:, -1])
     with pytest.raises(np.linalg.LinAlgError, match="independent"):
         estimate_superpopulation(study.influence, study.counts, X, sample, labels)
+
+
+@pytest.mark.parametrize("shared", [1, 12])
+def test_shared_label_noise_does_not_change_the_intercept_mean(shared) -> None:
+    """A common error changes intercept uncertainty while preserving its mean."""
+    names = [f"shared{i}" for i in range(shared)] + ["a", "b", "c", "d"]
+    counts = pd.DataFrame(
+        np.column_stack((np.ones((4, shared)), shared * np.eye(4))), columns=names
+    )
+    X = pd.DataFrame({"const": np.ones(4)})
+    study = Study(counts, X)
+    pi = pd.Series([0.5] * shared + [1.0] * 4, index=names)
+    sample = LabelSample(counts.columns, pi, "poisson")
+    labels = pd.Series([1.0] * shared + [0, 1, 0, 1], index=names)
+    result = estimate_superpopulation(study.influence, counts, X, sample, labels)
+
+    expected = np.array([1.0, 1.5, 1.0, 1.5]).mean()
+    se = np.sqrt(result.sigma2[0] / 4 + 0.5 / shared)
+    np.testing.assert_allclose(result.coefficients.iloc[0, 0], expected, rtol=1e-12)
+    np.testing.assert_allclose(result.standard_errors.iloc[0, 0], se, rtol=1e-12)

@@ -53,18 +53,17 @@ class SuperpopulationEstimate:
     diagnostics: dict = field(default_factory=dict)
 
 
-def _qr_factor(matrix: np.ndarray) -> np.ndarray:
-    """Return the triangular factor without allocating orthogonal columns."""
-    return np.asarray(np.linalg.qr(matrix, mode="r"))
-
-
 def _gls(
     X: np.ndarray, y: np.ndarray, Z: np.ndarray, residual_sd: float
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Fit GLS with covariance `residual_sd**2 I + Z Z.T` using square roots.
+    """Fit GLS with covariance `residual_sd**2 I + Z Z.T`.
+
+    For fixed entity errors u, the least-squares coefficients fit y - Z u.
+    Projecting out the features leaves the ridge problem
+    min ||residual_y - residual_Z u||² + residual_sd² ||u||².
 
     Args:
-        X: Unit features.
+        X: Full-rank unit features.
         y: Estimated outcome for one label class.
         Z: Share columns scaled by their design standard deviations.
         residual_sd: Standard deviation of the model error.
@@ -72,29 +71,30 @@ def _gls(
     Returns:
         Coefficients and their model-based standard errors.
     """
-    n, k = Z.shape
-    p = X.shape[1]
-    responses = np.column_stack((X, y))
-    if k < n:
-        # Eliminate u from min ||y - X beta - Z u||² + residual_sd² ||u||².
-        # The remaining block is residual_sd times the whitened regression.
-        augmented = np.zeros((n + k, k + p + 1))
-        augmented[:n, :k] = Z
-        augmented[:n, k:] = responses
-        np.fill_diagonal(augmented[n:, :k], residual_sd)
-        factor = _qr_factor(augmented)[k : k + p, k:]
-        scale = residual_sd
-    else:
-        # The covariance has the smaller dimension. R.T R equals the covariance.
-        stacked = np.vstack((Z.T, residual_sd * np.eye(n)))
-        root = _qr_factor(stacked)
-        whitened = np.linalg.solve(root.T, responses)
-        factor = _qr_factor(whitened)[:p]
-        scale = 1.0
+    Q, R = np.linalg.qr(X, mode="reduced")
+    feature_shares = Q.T @ Z
+    feature_y = Q.T @ y
+    residual_shares = Z - Q @ feature_shares
+    U, singular, Vt = np.linalg.svd(residual_shares, full_matrices=False)
+    # Removing the features can leave roundoff when a share lies in their span.
+    # Use the scale before projection to recognize these zero singular values.
+    cutoff = np.finfo(float).eps * max(Z.shape) * np.linalg.norm(Z)
+    singular[singular <= cutoff] = 0.0
+    denominator = singular**2 + residual_sd**2
+    rotated = feature_shares @ Vt.T
+    ridge_scores = (singular / denominator) * (U.T @ (y - Q @ feature_y))
+    beta = np.linalg.solve(R, feature_y - rotated @ ridge_scores)
 
-    design = factor[:, :p]
-    solution = np.linalg.solve(design, np.column_stack((factor[:, p], np.eye(p))))
-    return solution[:, 0], scale * np.linalg.norm(solution[:, 1:], axis=1)
+    # The conditional entity covariance shrinks each right singular direction
+    # by residual_sd² / denominator and keeps its orthogonal complement.
+    factors = [
+        residual_sd * np.eye(R.shape[0]),
+        rotated * (residual_sd / np.sqrt(denominator)),
+    ]
+    if Vt.shape[0] < Vt.shape[1]:
+        factors.append(feature_shares - rotated @ Vt)
+    covariance_root = np.linalg.solve(R, np.column_stack(factors))
+    return beta, np.linalg.norm(covariance_root, axis=1)
 
 
 def estimate_superpopulation(
@@ -113,10 +113,9 @@ def estimate_superpopulation(
 
     The weight matrix is `Sigma = sigma^2 I + Var(u)`, where the design
     contributes `Var(u) = sum_j (1-pi_j)/pi_j a_j^2 v_j v_j'`. That is diagonal
-    plus a term of rank at most the sample size. Square-root GLS works with
-    the smaller of the unit count and the number of entities with positive
-    design variance. It remains stable when the residual variance hits its
-    floor and the design accounts for nearly all the uncertainty.
+    plus a term of rank at most the sample size. Fitting the equivalent
+    penalized least-squares problem by a thin singular-value decomposition
+    avoids a solve over every sampled entity when there are few units.
 
     Args:
         infl: Influence decomposition for the frame.
