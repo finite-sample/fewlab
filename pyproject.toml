@@ -1,12 +1,13 @@
 [project]
 name = "fewlab"
-version = "4.0.0"
+version = "4.0.1"
 description = "Pick the fewest items to label for unbiased OLS on shares"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "Gaurav Sood", email = "gsood07@gmail.com" }]
+keywords = ["survey sampling", "inclusion probabilities", "regression", "annotation"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Science/Research",

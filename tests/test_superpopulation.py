@@ -132,7 +132,7 @@ def test_missing_labels_are_refused(setup) -> None:
         )
 
 
-@pytest.mark.parametrize(("repeats", "copies"), [(4, 1), (1, 1), (1, 12)])
+@pytest.mark.parametrize(("repeats", "copies"), [(4, 1), (1, 1), (1, 4), (1, 12)])
 def test_gls_matches_four_independent_group_means(repeats, copies) -> None:
     """Repeated units share their design noise and average their residual noise."""
     counts = pd.DataFrame(np.kron(np.eye(4), np.ones((repeats, 2 * copies))))
@@ -146,9 +146,14 @@ def test_gls_matches_four_independent_group_means(repeats, copies) -> None:
     labels = pd.Series(1.0, index=sample.items, name="class")
     result = estimate_superpopulation(study.influence, counts, X, sample, labels)
 
-    np.testing.assert_array_equal(result.sigma2, [1e-12])
     group_mean = 0.5 / probabilities
-    variance = (1 - probabilities) / (4 * copies * probabilities**2) + 1e-12 / repeats
+    group_var = (1 - probabilities) / (4 * copies * probabilities**2)
+    residual_maker = np.eye(4) - group_x @ np.linalg.pinv(group_x)
+    rss = np.linalg.norm(residual_maker @ group_mean) ** 2
+    design_trace = np.diag(residual_maker) @ group_var
+    sigma2 = max(repeats * (rss - design_trace) / (4 * repeats - 2), 1e-12)
+    np.testing.assert_allclose(result.sigma2, [sigma2], rtol=1e-11)
+    variance = group_var + sigma2 / repeats
     precision = group_x.T @ (group_x / variance[:, None])
     beta = np.linalg.solve(precision, group_x.T @ (group_mean / variance))
     se = np.sqrt(np.diag(np.linalg.inv(precision)))
@@ -179,6 +184,54 @@ def test_shared_label_noise_does_not_change_the_intercept_mean(shared) -> None:
     result = estimate_superpopulation(study.influence, counts, X, sample, labels)
 
     expected = np.array([1.0, 1.5, 1.0, 1.5]).mean()
-    se = np.sqrt(result.sigma2[0] / 4 + 0.5 / shared)
+    np.testing.assert_allclose(result.sigma2, [1 / 12], rtol=1e-12)
+    se = np.sqrt((1 / 12) / 4 + 0.5 / shared)
     np.testing.assert_allclose(result.coefficients.iloc[0, 0], expected, rtol=1e-12)
     np.testing.assert_allclose(result.standard_errors.iloc[0, 0], se, rtol=1e-12)
+
+
+def test_design_variance_only_enters_through_residuals() -> None:
+    """Check every draw against residual changes from enumerating the design."""
+    shares = np.array([0.2, 0.3, 0.4, 0.3, 0.5, 0.4])
+    counts = pd.DataFrame(
+        np.column_stack((10 * shares, np.diag(10 * (1 - shares)))),
+        columns=["shared", "a", "b", "c", "d", "e", "f"],
+    )
+    X = pd.DataFrame({"const": np.ones(6), "trend": np.arange(6)})
+    study = Study(counts, X)
+    pi = pd.Series([0.8, 1, 1, 1, 1, 1, 1], index=counts.columns)
+    labels = pd.Series([1, 0, 1, 0, 1, 1, 0], index=counts.columns)
+    observed = np.diag(1 - shares) @ labels.iloc[1:].to_numpy()
+    outcomes = np.array([observed, observed + shares / 0.8])
+    # A dense residual projection is independent of the thin-SVD GLS routine.
+    residual_maker = np.eye(6) - X.to_numpy() @ np.linalg.pinv(X)
+    residuals = outcomes @ residual_maker
+    residual_truth = np.average(residuals, axis=0, weights=[0.2, 0.8])
+    design_trace = np.average(
+        ((residuals - residual_truth) ** 2).sum(axis=1), weights=[0.2, 0.8]
+    )
+    assert design_trace > 0
+    for draw, entities in enumerate((counts.columns[1:], counts.columns)):
+        sample = LabelSample(entities, pi, "poisson")
+        result = estimate_superpopulation(
+            study.influence, counts, X, sample, labels.loc[entities]
+        )
+        # The estimator for the design trace contributes only on inclusion and
+        # weights that draw by 1/pi to recover the enumerated design variance.
+        correction = draw * design_trace / 0.8
+        expected = (residuals[draw] @ residuals[draw] - correction) / 4
+        np.testing.assert_allclose(result.sigma2, [expected], atol=1e-13)
+
+
+def test_census_uses_residual_degrees_of_freedom_for_aliased_features() -> None:
+    counts = pd.DataFrame(np.eye(4), columns=["a", "b", "c", "d"])
+    X = pd.DataFrame({"const": np.ones(4)})
+    study = Study(counts, X)
+    sample = LabelSample(
+        counts.columns, pd.Series(1.0, index=counts.columns), "poisson"
+    )
+    labels = pd.Series([0, 1, 0, 1], index=counts.columns)
+    result = estimate_superpopulation(
+        study.influence, counts, X.assign(dup=1), sample, labels
+    )
+    np.testing.assert_allclose(result.sigma2, [1 / 3])
