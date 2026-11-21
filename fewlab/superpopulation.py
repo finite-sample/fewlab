@@ -53,25 +53,48 @@ class SuperpopulationEstimate:
     diagnostics: dict = field(default_factory=dict)
 
 
-def _whiten(
-    mat: np.ndarray, Vk: np.ndarray, inner: np.ndarray, sigma2: float
-) -> np.ndarray:
-    """Apply `Sigma^-1` to a matrix through the Woodbury identity.
+def _qr_factor(matrix: np.ndarray) -> np.ndarray:
+    """Return the triangular factor without allocating orthogonal columns."""
+    return np.asarray(np.linalg.qr(matrix, mode="r"))
 
-    `Sigma = sigma^2 I + Vk D Vk'` is diagonal plus a term of rank at most the
-    sample size, so its inverse costs a solve of the sample's size rather than
-    of the unit count.
+
+def _gls(
+    X: np.ndarray, y: np.ndarray, Z: np.ndarray, residual_sd: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fit GLS with covariance `residual_sd**2 I + Z Z.T` using square roots.
 
     Args:
-        mat: Matrix to premultiply.
-        Vk: Share columns for entities carrying positive design weight.
-        inner: `sigma^2 D^-1 + Vk' Vk`, the inner matrix of the Woodbury form.
-        sigma2: Residual variance.
+        X: Unit features.
+        y: Estimated outcome for one label class.
+        Z: Share columns scaled by their design standard deviations.
+        residual_sd: Standard deviation of the model error.
 
     Returns:
-        `Sigma^-1 @ mat`.
+        Coefficients and their model-based standard errors.
     """
-    return (mat - Vk @ np.linalg.solve(inner, Vk.T @ mat)) / sigma2
+    n, k = Z.shape
+    p = X.shape[1]
+    responses = np.column_stack((X, y))
+    if k < n:
+        # Eliminate u from min ||y - X beta - Z u||² + residual_sd² ||u||².
+        # The remaining block is residual_sd times the whitened regression.
+        augmented = np.zeros((n + k, k + p + 1))
+        augmented[:n, :k] = Z
+        augmented[:n, k:] = responses
+        np.fill_diagonal(augmented[n:, :k], residual_sd)
+        factor = _qr_factor(augmented)[k : k + p, k:]
+        scale = residual_sd
+    else:
+        # The covariance has the smaller dimension. R.T R equals the covariance.
+        stacked = np.vstack((Z.T, residual_sd * np.eye(n)))
+        root = _qr_factor(stacked)
+        whitened = np.linalg.solve(root.T, responses)
+        factor = _qr_factor(whitened)[:p]
+        scale = 1.0
+
+    design = factor[:, :p]
+    solution = np.linalg.solve(design, np.column_stack((factor[:, p], np.eye(p))))
+    return solution[:, 0], scale * np.linalg.norm(solution[:, 1:], axis=1)
 
 
 def estimate_superpopulation(
@@ -90,12 +113,10 @@ def estimate_superpopulation(
 
     The weight matrix is `Sigma = sigma^2 I + Var(u)`, where the design
     contributes `Var(u) = sum_j (1-pi_j)/pi_j a_j^2 v_j v_j'`. That is diagonal
-    plus a low-rank term of rank at most the sample size, so the Woodbury
-    identity turns an `n by n` inverse into a solve of the size of the sample:
-
-        Sigma^-1 = (1/s)[ I - V_S (s D^-1 + V_S' V_S)^-1 V_S' ]
-
-    with `s = sigma^2` and `D` the diagonal of estimated design weights.
+    plus a term of rank at most the sample size. Square-root GLS works with
+    the smaller of the unit count and the number of entities with positive
+    design variance. It remains stable when the residual variance hits its
+    floor and the design accounts for nearly all the uncertainty.
 
     Args:
         infl: Influence decomposition for the frame.
@@ -110,6 +131,8 @@ def estimate_superpopulation(
     Raises:
         ValueError: If the sample references entities outside the frame, or a
             sampled entity has no label.
+        np.linalg.LinAlgError: If design variance is positive and the feature
+            coefficients are not separately identifiable.
     """
     C = as_counts(counts)
     T = C.row_totals()
@@ -135,7 +158,7 @@ def estimate_superpopulation(
     n, p = Xn.shape
 
     y_hat = V_s @ (A_arr / pi[:, None])
-    ols = np.linalg.lstsq(Xn, y_hat, rcond=None)[0]
+    ols, _, rank, _ = np.linalg.lstsq(Xn, y_hat, rcond=None)
 
     coefs, ses, sigmas = [], [], []
     for q in range(A_arr.shape[1]):
@@ -152,14 +175,12 @@ def estimate_superpopulation(
             ses.append(np.sqrt(sigma2 * np.diag(np.linalg.pinv(Xn.T @ Xn))))
             continue
 
-        Vk = V_s[:, active]
-        inner = sigma2 * np.diag(1.0 / d[active]) + Vk.T @ Vk
-
-        XtSX = Xn.T @ _whiten(Xn, Vk, inner, sigma2)
-        rhs = Xn.T @ _whiten(y_hat[:, q : q + 1], Vk, inner, sigma2)
-        beta = np.linalg.solve(XtSX, rhs)[:, 0]
+        if rank < p:
+            raise np.linalg.LinAlgError("GLS requires linearly independent features")
+        Z = V_s[:, active] * np.sqrt(d[active])
+        beta, se = _gls(Xn, y_hat[:, q], Z, np.sqrt(sigma2))
         coefs.append(beta)
-        ses.append(np.sqrt(np.clip(np.diag(np.linalg.inv(XtSX)), 0.0, None)))
+        ses.append(se)
 
     features = pd.Index(X.columns)
     spread = np.einsum(
