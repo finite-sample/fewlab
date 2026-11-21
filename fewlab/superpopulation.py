@@ -53,25 +53,48 @@ class SuperpopulationEstimate:
     diagnostics: dict = field(default_factory=dict)
 
 
-def _whiten(
-    mat: np.ndarray, Vk: np.ndarray, inner: np.ndarray, sigma2: float
-) -> np.ndarray:
-    """Apply `Sigma^-1` to a matrix through the Woodbury identity.
+def _gls(
+    X: np.ndarray, y: np.ndarray, Z: np.ndarray, residual_sd: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fit GLS with covariance `residual_sd**2 I + Z Z.T`.
 
-    `Sigma = sigma^2 I + Vk D Vk'` is diagonal plus a term of rank at most the
-    sample size, so its inverse costs a solve of the sample's size rather than
-    of the unit count.
+    For fixed entity errors u, the least-squares coefficients fit y - Z u.
+    Projecting out the features leaves the ridge problem
+    min ||residual_y - residual_Z u||² + residual_sd² ||u||².
 
     Args:
-        mat: Matrix to premultiply.
-        Vk: Share columns for entities carrying positive design weight.
-        inner: `sigma^2 D^-1 + Vk' Vk`, the inner matrix of the Woodbury form.
-        sigma2: Residual variance.
+        X: Full-rank unit features.
+        y: Estimated outcome for one label class.
+        Z: Share columns scaled by their design standard deviations.
+        residual_sd: Standard deviation of the model error.
 
     Returns:
-        `Sigma^-1 @ mat`.
+        Coefficients and their model-based standard errors.
     """
-    return (mat - Vk @ np.linalg.solve(inner, Vk.T @ mat)) / sigma2
+    Q, R = np.linalg.qr(X, mode="reduced")
+    feature_shares = Q.T @ Z
+    feature_y = Q.T @ y
+    residual_shares = Z - Q @ feature_shares
+    U, singular, Vt = np.linalg.svd(residual_shares, full_matrices=False)
+    # Removing the features can leave roundoff when a share lies in their span.
+    # Use the scale before projection to recognize these zero singular values.
+    cutoff = np.finfo(float).eps * max(Z.shape) * np.linalg.norm(Z)
+    singular[singular <= cutoff] = 0.0
+    denominator = singular**2 + residual_sd**2
+    rotated = feature_shares @ Vt.T
+    ridge_scores = (singular / denominator) * (U.T @ (y - Q @ feature_y))
+    beta = np.linalg.solve(R, feature_y - rotated @ ridge_scores)
+
+    # The conditional entity covariance shrinks each right singular direction
+    # by residual_sd² / denominator and keeps its orthogonal complement.
+    factors = [
+        residual_sd * np.eye(R.shape[0]),
+        rotated * (residual_sd / np.sqrt(denominator)),
+    ]
+    if Vt.shape[0] < Vt.shape[1]:
+        factors.append(feature_shares - rotated @ Vt)
+    covariance_root = np.linalg.solve(R, np.column_stack(factors))
+    return beta, np.linalg.norm(covariance_root, axis=1)
 
 
 def estimate_superpopulation(
@@ -90,12 +113,9 @@ def estimate_superpopulation(
 
     The weight matrix is `Sigma = sigma^2 I + Var(u)`, where the design
     contributes `Var(u) = sum_j (1-pi_j)/pi_j a_j^2 v_j v_j'`. That is diagonal
-    plus a low-rank term of rank at most the sample size, so the Woodbury
-    identity turns an `n by n` inverse into a solve of the size of the sample:
-
-        Sigma^-1 = (1/s)[ I - V_S (s D^-1 + V_S' V_S)^-1 V_S' ]
-
-    with `s = sigma^2` and `D` the diagonal of estimated design weights.
+    plus a term of rank at most the sample size. Fitting the equivalent
+    penalized least-squares problem by a thin singular-value decomposition
+    avoids a solve over every sampled entity when there are few units.
 
     Args:
         infl: Influence decomposition for the frame.
@@ -110,6 +130,8 @@ def estimate_superpopulation(
     Raises:
         ValueError: If the sample references entities outside the frame, or a
             sampled entity has no label.
+        np.linalg.LinAlgError: If design variance is positive and the feature
+            coefficients are not separately identifiable.
     """
     C = as_counts(counts)
     T = C.row_totals()
@@ -135,7 +157,7 @@ def estimate_superpopulation(
     n, p = Xn.shape
 
     y_hat = V_s @ (A_arr / pi[:, None])
-    ols = np.linalg.lstsq(Xn, y_hat, rcond=None)[0]
+    ols, _, rank, _ = np.linalg.lstsq(Xn, y_hat, rcond=None)
 
     coefs, ses, sigmas = [], [], []
     for q in range(A_arr.shape[1]):
@@ -152,14 +174,12 @@ def estimate_superpopulation(
             ses.append(np.sqrt(sigma2 * np.diag(np.linalg.pinv(Xn.T @ Xn))))
             continue
 
-        Vk = V_s[:, active]
-        inner = sigma2 * np.diag(1.0 / d[active]) + Vk.T @ Vk
-
-        XtSX = Xn.T @ _whiten(Xn, Vk, inner, sigma2)
-        rhs = Xn.T @ _whiten(y_hat[:, q : q + 1], Vk, inner, sigma2)
-        beta = np.linalg.solve(XtSX, rhs)[:, 0]
+        if rank < p:
+            raise np.linalg.LinAlgError("GLS requires linearly independent features")
+        Z = V_s[:, active] * np.sqrt(d[active])
+        beta, se = _gls(Xn, y_hat[:, q], Z, np.sqrt(sigma2))
         coefs.append(beta)
-        ses.append(np.sqrt(np.clip(np.diag(np.linalg.inv(XtSX)), 0.0, None)))
+        ses.append(se)
 
     features = pd.Index(X.columns)
     spread = np.einsum(

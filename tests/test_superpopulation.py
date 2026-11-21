@@ -9,10 +9,10 @@ anything.
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd  # noqa: TC002
+import pandas as pd
 import pytest
 
-from fewlab import Study, estimate_superpopulation
+from fewlab import LabelSample, Study, estimate_superpopulation
 from tests.fixtures import exact_truth, one_hot_labels, panel
 
 BUDGET = 50
@@ -130,3 +130,55 @@ def test_missing_labels_are_refused(setup) -> None:
             sample,
             labels.loc[sample.items].iloc[:-1],
         )
+
+
+@pytest.mark.parametrize(("repeats", "copies"), [(4, 1), (1, 1), (1, 12)])
+def test_gls_matches_four_independent_group_means(repeats, copies) -> None:
+    """Repeated units share their design noise and average their residual noise."""
+    counts = pd.DataFrame(np.kron(np.eye(4), np.ones((repeats, 2 * copies))))
+    counts.columns = [f"entity{i}" for i in range(counts.shape[1])]
+    group_x = np.column_stack((np.ones(4), [-1.0, -0.2, 0.6, 1.1]))
+    X = pd.DataFrame(np.repeat(group_x, repeats, axis=0), columns=["const", "slope"])
+    study = Study(counts, X)
+    probabilities = np.array([0.42, 0.65, 0.48, 0.6])
+    pi = pd.Series(np.repeat(probabilities, 2 * copies), index=counts.columns)
+    sample = LabelSample(counts.columns[::2], pi, "poisson")
+    labels = pd.Series(1.0, index=sample.items, name="class")
+    result = estimate_superpopulation(study.influence, counts, X, sample, labels)
+
+    np.testing.assert_array_equal(result.sigma2, [1e-12])
+    group_mean = 0.5 / probabilities
+    variance = (1 - probabilities) / (4 * copies * probabilities**2) + 1e-12 / repeats
+    precision = group_x.T @ (group_x / variance[:, None])
+    beta = np.linalg.solve(precision, group_x.T @ (group_mean / variance))
+    se = np.sqrt(np.diag(np.linalg.inv(precision)))
+    np.testing.assert_allclose(result.coefficients.iloc[:, 0], beta, atol=1e-9)
+    np.testing.assert_allclose(result.standard_errors.iloc[:, 0], se, atol=1e-9)
+
+
+def test_gls_rejects_an_aliased_feature(setup) -> None:
+    study, labels, _ = setup
+    sample = study.draw(study.design(BUDGET), random_state=4, fixed_size=False)
+    X = study.X.assign(duplicate=study.X.iloc[:, -1])
+    with pytest.raises(np.linalg.LinAlgError, match="independent"):
+        estimate_superpopulation(study.influence, study.counts, X, sample, labels)
+
+
+@pytest.mark.parametrize("shared", [1, 12])
+def test_shared_label_noise_does_not_change_the_intercept_mean(shared) -> None:
+    """A common error changes intercept uncertainty while preserving its mean."""
+    names = [f"shared{i}" for i in range(shared)] + ["a", "b", "c", "d"]
+    counts = pd.DataFrame(
+        np.column_stack((np.ones((4, shared)), shared * np.eye(4))), columns=names
+    )
+    X = pd.DataFrame({"const": np.ones(4)})
+    study = Study(counts, X)
+    pi = pd.Series([0.5] * shared + [1.0] * 4, index=names)
+    sample = LabelSample(counts.columns, pi, "poisson")
+    labels = pd.Series([1.0] * shared + [0, 1, 0, 1], index=names)
+    result = estimate_superpopulation(study.influence, counts, X, sample, labels)
+
+    expected = np.array([1.0, 1.5, 1.0, 1.5]).mean()
+    se = np.sqrt(result.sigma2[0] / 4 + 0.5 / shared)
+    np.testing.assert_allclose(result.coefficients.iloc[0, 0], expected, rtol=1e-12)
+    np.testing.assert_allclose(result.standard_errors.iloc[0, 0], se, rtol=1e-12)
