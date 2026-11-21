@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-11-20
+
+### Fixed
+
+- `estimate_superpopulation` now subtracts only the label-sampling variance
+  that remains after fitting the unit features. In a four-unit example, a
+  shared label changed the estimated residual variance from 1/12 to the
+  numerical floor. Both possible draws now give 1/12. This correction can
+  change the GLS coefficients and their standard errors.
+- The GLS solver uses a singular-value decomposition of the sampled entity
+  shares after fitting the unit features. This improves numerical accuracy
+  when the residual variance is small and avoids solving a system with one
+  row per sampled entity when there are fewer units than entities.
+
 ## [4.0.0] - 2026-10-24
 
 This release changes the defaults for drawing and inference. Existing callers
