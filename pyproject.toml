@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
-authors = [{ name = "Gaurav Sood", email = "gsood07@gmail.com" }]
+authors = [{ name = "Gaurav Sood" }]
 keywords = ["survey sampling", "inclusion probabilities", "regression", "annotation"]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
