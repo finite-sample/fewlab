@@ -20,7 +20,7 @@ jobs:
     with:
       # The reusable workflow defaults to ["3.11", "3.14"], and this package's
       # requires-python floor is 3.12 -- a 3.11 leg cannot even resolve.
-      python-versions: '["3.12", "3.13", "3.14"]'
+      python-versions: '["3.13", "3.14"]'
       wheel-import: fewlab
       coverage-floor: 82
       run-preen: true
