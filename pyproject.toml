@@ -18,8 +18,8 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-  "numpy>=1.23",
-  "pandas>=1.5",
+  "numpy>=2.1.0",
+  "pandas>=2.2.3",
 ]
 
 [project.urls]
